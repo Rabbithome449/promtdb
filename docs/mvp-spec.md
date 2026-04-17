@@ -10,7 +10,7 @@ Webapp zur Verwaltung und Komposition von Stable-Diffusion-Prompts.
 - Kategorisierung (z. B. Hair, Face, Outfit, Lighting, Style, Quality, Camera)
 - CRUD für:
   - Category
-n  - Phrase/Tag
+  - Phrase/Tag
 - Optional pro Phrase:
   - Gewicht/Strength (z. B. `(long hair:1.2)`)
   - Notiz
