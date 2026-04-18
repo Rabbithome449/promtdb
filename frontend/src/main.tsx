@@ -119,6 +119,7 @@ const ui = {
 }
 
 function App() {
+  const [viewportWidth, setViewportWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1280)
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -151,6 +152,8 @@ function App() {
 
   const [positiveParts, setPositiveParts] = useState<ComposerItem[]>([])
   const [negativeParts, setNegativeParts] = useState<ComposerItem[]>([])
+  const isMobile = viewportWidth < 900
+  const isNarrow = viewportWidth < 640
 
   const categoryNameById = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
   const categoryByName = useMemo(() => {
@@ -269,6 +272,12 @@ function App() {
     if (isAuthenticated) void loadAll()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated])
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     if (newPhraseCategoryId === null && selectedCategoryId !== null) {
@@ -541,7 +550,7 @@ function App() {
                 boxShadow: activeTab === k ? '0 0 0 3px rgba(94,162,255,0.2)' : 'none',
               }}
             >
-              {label}
+              {k === 'dashboard' ? '📊 ' : k === 'library' ? '📚 ' : k === 'composer' ? '🧩 ' : '🧬 '}{label}
             </button>
           ))}
         </nav>
@@ -549,7 +558,7 @@ function App() {
         {error && <p style={{ color: ui.danger }}>{error}</p>}
 
         {activeTab === 'dashboard' && (
-          <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
+          <section style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit,minmax(${isNarrow ? 170 : 220}px,1fr))`, gap: 12 }}>
             <StatCard title="Categories" value={String(categories.length)} />
             <StatCard title="Phrases" value={String(phrases.length)} />
             <StatCard title="Presets" value={String(presets.length)} />
@@ -560,7 +569,7 @@ function App() {
         )}
 
         {activeTab === 'library' && (
-          <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <section style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
             <Panel title="Categories">
               <form onSubmit={createCategory} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                 <input style={inputStyle} value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="New category" />
@@ -603,8 +612,8 @@ function App() {
                     <strong>{p.text}</strong>
                     {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
                     {p.required_lora && <span style={{ color: ui.ok }}>LoRA: {p.required_lora}</span>}
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'positive')}>+ Positive</button>
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>+ Negative</button>
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'positive')}>➕ Positive</button>
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>➖ Negative</button>
                     <button style={btnGhostStyle} onClick={() => removePhrase(p.id)}>Delete</button>
                   </div>
                   <div style={{ marginTop: 8 }}>
@@ -649,21 +658,21 @@ function App() {
                     <strong>{p.text}</strong>
                     {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
                     {p.required_lora && <span style={{ color: ui.ok }}>LoRA: {p.required_lora}</span>}
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'positive')}>+ Positive</button>
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>+ Negative</button>
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'positive')}>➕ Positive</button>
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>➖ Negative</button>
                   </div>
                 ))}
                 {categoryPhrases.length === 0 && <span style={{ color: ui.muted }}>No phrases in selected category.</span>}
               </div>
             </Panel>
 
-            <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <section style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 12 }}>
               <ComposerList title="Positive" items={positiveParts} setItems={setPositiveParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
               <ComposerList title="Negative" items={negativeParts} setItems={setNegativeParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
             </section>
 
             <Panel title="Prompt Inspector">
-              <p style={{ marginTop: 0 }}>Quality score: <strong>{promptHealth.score}/100</strong></p>
+              <p style={{ marginTop: 0 }}>Quality score: <strong>{promptHealth.score}/100</strong> {promptHealth.score >= 85 ? '🟢' : promptHealth.score >= 60 ? '🟡' : '🔴'}</p>
               {promptHealth.issues.length ? (
                 <ul>{promptHealth.issues.map((i) => <li key={i}>{i}</li>)}</ul>
               ) : (
@@ -678,16 +687,16 @@ function App() {
             <Panel title="Structured view">
               {groupedPositive.map(([group, items]) => (
                 <div key={group} style={{ marginBottom: 10 }}>
-                  <strong>{group}</strong>
+                  <strong>🏷️ {group}</strong>
                   <ul>{items.map((i) => <li key={i.id}>{i.text}{i.weight !== undefined ? ` (${i.weight})` : ''}{i.isImportant ? ' [important]' : ''}</li>)}</ul>
                 </div>
               ))}
               {groupedNegative.length > 0 && (
                 <>
-                  <h4 style={{ marginBottom: 6 }}>Negative groups</h4>
+                  <h4 style={{ marginBottom: 6 }}>🚫 Negative groups</h4>
                   {groupedNegative.map(([group, items]) => (
                     <div key={`neg-${group}`} style={{ marginBottom: 10 }}>
-                      <strong>{group}</strong>
+                      <strong>🏷️ {group}</strong>
                       <ul>{items.map((i) => <li key={i.id}>{i.text}{i.weight !== undefined ? ` (${i.weight})` : ''}</li>)}</ul>
                     </div>
                   ))}
@@ -695,7 +704,7 @@ function App() {
               )}
             </Panel>
 
-            <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <section style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
               <Panel title="Positive prompt">
                 <textarea readOnly value={positivePrompt} rows={4} style={textareaStyle} />
                 <button style={btnStyle} onClick={() => void copyText(positivePrompt)}>Copy</button>
@@ -727,7 +736,7 @@ function App() {
             <form onSubmit={saveCharacter} style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
               <input style={inputStyle} value={characterName} onChange={(e) => setCharacterName(e.target.value)} placeholder="character name" />
               <input style={inputStyle} value={characterDescription} onChange={(e) => setCharacterDescription(e.target.value)} placeholder="description" />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isNarrow ? '1fr' : '1fr 120px', gap: 8 }}>
                 <input style={inputStyle} value={characterVersionFamily} onChange={(e) => setCharacterVersionFamily(e.target.value)} placeholder="version family" />
                 <input style={inputStyle} value={characterVersion} onChange={(e) => setCharacterVersion(e.target.value)} type="number" min={1} />
               </div>
@@ -800,8 +809,8 @@ function ComposerList({
     <Panel title={title}>
       {items.length === 0 && <p style={{ color: ui.muted }}>No items yet</p>}
       {items.map((item, idx) => (
-        <div key={item.id} style={{ border: `1px solid ${ui.border}`, borderRadius: 10, padding: 8, marginBottom: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px auto', gap: 8, marginBottom: 8 }}>
+        <div key={item.id} style={{ border: `1px solid ${ui.border}`, borderRadius: 10, padding: 6, marginBottom: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px auto', gap: 6, marginBottom: 6 }}>
             <input style={inputStyle} value={item.text} onChange={(e) => updatePart(setItems, idx, { text: e.target.value })} />
             <input style={inputStyle} type="number" step="0.1" placeholder="weight" value={item.weight ?? ''} onChange={(e) => updatePart(setItems, idx, { weight: e.target.value ? Number(e.target.value) : undefined })} />
             <div style={{ display: 'flex', gap: 4 }}>
@@ -810,7 +819,7 @@ function ComposerList({
               <button style={btnGhostStyle} onClick={() => removePart(setItems, idx)}>✕</button>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 6, marginBottom: 6, alignItems: 'center' }}>
             <span style={{ color: ui.muted }}>Category: {item.category || 'Uncategorized'}</span>
             <label><input type="checkbox" checked={Boolean(item.isImportant)} onChange={(e) => updatePart(setItems, idx, { isImportant: e.target.checked })} /> important</label>
             <label><input type="checkbox" checked={Boolean(item.isRecurring)} onChange={(e) => updatePart(setItems, idx, { isRecurring: e.target.checked })} /> recurring</label>
