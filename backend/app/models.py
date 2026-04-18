@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
+from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
 
@@ -26,6 +27,15 @@ class Phrase(SQLModel, table=True):
     is_negative_default: bool = False
     notes: Optional[str] = None
     sort_order: int = 0
+    created_at: datetime = Field(default_factory=now_utc)
+    updated_at: datetime = Field(default_factory=now_utc)
+
+
+class PromptPreset(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, min_length=1)
+    positive_parts: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    negative_parts: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=now_utc)
     updated_at: datetime = Field(default_factory=now_utc)
 
@@ -56,3 +66,30 @@ class PhraseUpdate(SQLModel):
     is_negative_default: Optional[bool] = None
     notes: Optional[str] = None
     sort_order: Optional[int] = None
+
+
+class PromptPart(SQLModel):
+    text: str
+    weight: Optional[float] = None
+
+
+class ComposeRequest(SQLModel):
+    positive_parts: list[PromptPart] = Field(default_factory=list)
+    negative_parts: list[PromptPart] = Field(default_factory=list)
+
+
+class ComposeResponse(SQLModel):
+    positive_prompt: str
+    negative_prompt: str
+
+
+class PromptPresetCreate(SQLModel):
+    name: str
+    positive_parts: list[PromptPart] = Field(default_factory=list)
+    negative_parts: list[PromptPart] = Field(default_factory=list)
+
+
+class PromptPresetUpdate(SQLModel):
+    name: Optional[str] = None
+    positive_parts: Optional[list[PromptPart]] = None
+    negative_parts: Optional[list[PromptPart]] = None

@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
 
 from .db import get_session, init_db
@@ -9,12 +10,25 @@ from .models import (
     Category,
     CategoryCreate,
     CategoryUpdate,
+    ComposeRequest,
+    ComposeResponse,
     Phrase,
     PhraseCreate,
     PhraseUpdate,
+    PromptPreset,
+    PromptPresetCreate,
+    PromptPresetUpdate,
 )
 
-app = FastAPI(title="promtdb API", version="0.2.0")
+app = FastAPI(title="promtdb API", version="0.3.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
@@ -34,7 +48,7 @@ def list_categories(session: Session = Depends(get_session)):
 
 @app.post("/categories", response_model=Category)
 def create_category(payload: CategoryCreate, session: Session = Depends(get_session)):
-    item = Category(name=payload.name, sort_order=payload.sort_order)
+    item = Category(name=payload.name.strip(), sort_order=payload.sort_order)
     session.add(item)
     session.commit()
     session.refresh(item)
@@ -48,6 +62,9 @@ def update_category(category_id: int, payload: CategoryUpdate, session: Session 
         raise HTTPException(status_code=404, detail="Category not found")
 
     data = payload.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] is not None:
+        data["name"] = data["name"].strip()
+
     for key, value in data.items():
         setattr(item, key, value)
     item.updated_at = datetime.now(timezone.utc)
@@ -62,6 +79,10 @@ def delete_category(category_id: int, session: Session = Depends(get_session)):
     item = session.get(Category, category_id)
     if not item:
         raise HTTPException(status_code=404, detail="Category not found")
+
+    phrases = session.exec(select(Phrase).where(Phrase.category_id == category_id)).all()
+    for phrase in phrases:
+        session.delete(phrase)
     session.delete(item)
     session.commit()
     return {"ok": True}
@@ -85,6 +106,7 @@ def create_phrase(payload: PhraseCreate, session: Session = Depends(get_session)
         raise HTTPException(status_code=400, detail="Invalid category_id")
 
     item = Phrase(**payload.model_dump())
+    item.text = item.text.strip()
     session.add(item)
     session.commit()
     session.refresh(item)
@@ -103,6 +125,9 @@ def update_phrase(phrase_id: int, payload: PhraseUpdate, session: Session = Depe
         if not category:
             raise HTTPException(status_code=400, detail="Invalid category_id")
 
+    if "text" in data and data["text"] is not None:
+        data["text"] = data["text"].strip()
+
     for key, value in data.items():
         setattr(item, key, value)
     item.updated_at = datetime.now(timezone.utc)
@@ -117,6 +142,79 @@ def delete_phrase(phrase_id: int, session: Session = Depends(get_session)):
     item = session.get(Phrase, phrase_id)
     if not item:
         raise HTTPException(status_code=404, detail="Phrase not found")
+    session.delete(item)
+    session.commit()
+    return {"ok": True}
+
+
+@app.post("/compose", response_model=ComposeResponse)
+def compose_prompt(payload: ComposeRequest):
+    def render(parts):
+        rendered: list[str] = []
+        for part in parts:
+            text = part.text.strip()
+            if not text:
+                continue
+            if part.weight is None:
+                rendered.append(text)
+            else:
+                rendered.append(f"({text}:{part.weight})")
+        return ", ".join(rendered)
+
+    return ComposeResponse(
+        positive_prompt=render(payload.positive_parts),
+        negative_prompt=render(payload.negative_parts),
+    )
+
+
+@app.get("/presets", response_model=list[PromptPreset])
+def list_presets(session: Session = Depends(get_session)):
+    return session.exec(select(PromptPreset).order_by(PromptPreset.id.desc())).all()
+
+
+@app.post("/presets", response_model=PromptPreset)
+def create_preset(payload: PromptPresetCreate, session: Session = Depends(get_session)):
+    item = PromptPreset(
+        name=payload.name.strip(),
+        positive_parts=[part.model_dump() for part in payload.positive_parts],
+        negative_parts=[part.model_dump() for part in payload.negative_parts],
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+
+@app.patch("/presets/{preset_id}", response_model=PromptPreset)
+def update_preset(preset_id: int, payload: PromptPresetUpdate, session: Session = Depends(get_session)):
+    item = session.get(PromptPreset, preset_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Preset not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] is not None:
+        data["name"] = data["name"].strip()
+
+    if "positive_parts" in data and data["positive_parts"] is not None:
+        data["positive_parts"] = [part.model_dump() for part in data["positive_parts"]]
+
+    if "negative_parts" in data and data["negative_parts"] is not None:
+        data["negative_parts"] = [part.model_dump() for part in data["negative_parts"]]
+
+    for key, value in data.items():
+        setattr(item, key, value)
+    item.updated_at = datetime.now(timezone.utc)
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+
+@app.delete("/presets/{preset_id}")
+def delete_preset(preset_id: int, session: Session = Depends(get_session)):
+    item = session.get(PromptPreset, preset_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Preset not found")
     session.delete(item)
     session.commit()
     return {"ok": True}
