@@ -83,6 +83,22 @@ function toPrompt(parts: ComposerItem[]) {
     .join(', ')
 }
 
+function normalizeText(text: string) {
+  return text.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function dedupeParts(parts: ComposerItem[]) {
+  const seen = new Set<string>()
+  const next: ComposerItem[] = []
+  for (const part of parts) {
+    const key = normalizeText(part.text)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    next.push({ ...part, text: part.text.trim() })
+  }
+  return next
+}
+
 function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -139,6 +155,39 @@ function App() {
     }
     return [...map.entries()]
   }, [positiveParts])
+
+  const promptHealth = useMemo(() => {
+    const issues: string[] = []
+    const positiveKeys = new Set(positiveParts.map((p) => normalizeText(p.text)).filter(Boolean))
+    const negativeKeys = new Set(negativeParts.map((p) => normalizeText(p.text)).filter(Boolean))
+    const duplicatePositiveCount = positiveParts.length - positiveKeys.size
+    const duplicateNegativeCount = negativeParts.length - negativeKeys.size
+
+    if (positiveParts.length === 0) issues.push('No positive parts selected yet.')
+    if (duplicatePositiveCount > 0) issues.push(`Positive has ${duplicatePositiveCount} duplicate entries.`)
+    if (duplicateNegativeCount > 0) issues.push(`Negative has ${duplicateNegativeCount} duplicate entries.`)
+
+    let crossConflictCount = 0
+    for (const key of positiveKeys) {
+      if (negativeKeys.has(key)) crossConflictCount += 1
+    }
+    if (crossConflictCount > 0) issues.push(`${crossConflictCount} terms appear in both positive and negative.`)
+
+    const importantCount = positiveParts.filter((p) => p.isImportant).length
+    if (importantCount === 0 && positiveParts.length > 0) issues.push('No important/core part is marked.')
+
+    if (requiredLoras.length === 0 && positiveParts.length > 0) {
+      issues.push('No required LoRA detected. Add one if this character depends on it.')
+    }
+
+    const recurringCount = positiveParts.filter((p) => p.isRecurring).length
+    if (recurringCount === 0 && positiveParts.length > 4) {
+      issues.push('No recurring/quality bundle tagged. Consider grouping reusable quality parts.')
+    }
+
+    const score = Math.max(0, 100 - issues.length * 12)
+    return { score, issues }
+  }, [positiveParts, negativeParts, requiredLoras.length])
 
   async function loadAll() {
     setLoading(true)
@@ -413,6 +462,27 @@ function App() {
     await loadAll()
   }
 
+  function smartCleanupPrompt() {
+    setPositiveParts((curr) => {
+      const cleaned = dedupeParts(curr)
+      return cleaned.map((p, idx) => ({
+        ...p,
+        isImportant: p.isImportant ?? idx === 0,
+        isRecurring: p.isRecurring ?? /quality|detail|masterpiece|highres/i.test(p.text),
+      }))
+    })
+    setNegativeParts((curr) => dedupeParts(curr))
+  }
+
+  function addCinematicStarterPack() {
+    const pack: ComposerItem[] = [
+      { id: `auto-cine-${Date.now()}-1`, text: 'cinematic lighting', isRecurring: true, category: 'Lighting' },
+      { id: `auto-cine-${Date.now()}-2`, text: 'highly detailed', isRecurring: true, category: 'Quality' },
+      { id: `auto-cine-${Date.now()}-3`, text: 'sharp focus', isRecurring: true, category: 'Quality' },
+    ]
+    setPositiveParts((curr) => dedupeParts([...curr, ...pack]))
+  }
+
   return (
     <main style={{ fontFamily: 'Inter, system-ui, sans-serif', padding: 20, maxWidth: 1200, margin: '0 auto' }}>
       <h1 style={{ marginTop: 0 }}>promtdb MVP</h1>
@@ -532,6 +602,26 @@ function App() {
               <strong>Required LoRAs:</strong> {requiredLoras.join(', ')}
             </p>
           )}
+        </div>
+
+        <div style={{ marginTop: 12, border: '1px solid #eee', borderRadius: 8, padding: 10, background: '#fafafa' }}>
+          <h3 style={{ marginTop: 0 }}>Prompt Inspector</h3>
+          <p style={{ margin: '0 0 8px 0' }}>
+            Quality score: <strong>{promptHealth.score}/100</strong>
+          </p>
+          {promptHealth.issues.length === 0 ? (
+            <p style={{ margin: '0 0 8px 0', color: '#0b7a2f' }}>Looks clean, structured, and production-ready.</p>
+          ) : (
+            <ul style={{ margin: '0 0 8px 18px' }}>
+              {promptHealth.issues.map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </ul>
+          )}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={smartCleanupPrompt}>Auto-clean duplicates + normalize</button>
+            <button onClick={addCinematicStarterPack}>Add cinematic starter pack</button>
+          </div>
         </div>
 
         <div style={{ marginTop: 12 }}>
