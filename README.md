@@ -21,8 +21,8 @@ Portainer (ohne Schnickschnack):
 
 Services:
 - Web UI: `http://localhost:8080`
-- API: `http://localhost:8000`
-- API health: `http://localhost:8000/health`
+- API: `http://localhost:18000`
+- API health: `http://localhost:18000/health`
 - Postgres: `localhost:5432` (db/user/pass: `promtdb`)
 
 Stop stack:
