@@ -127,6 +127,7 @@ function App() {
   const [loginUser, setLoginUser] = useState('promptdb')
   const [loginPass, setLoginPass] = useState('promptdb')
   const [loginError, setLoginError] = useState<string | null>(null)
+  const [language, setLanguage] = useState<'de' | 'en'>('de')
 
   const [categories, setCategories] = useState<Category[]>([])
   const [phrases, setPhrases] = useState<Phrase[]>([])
@@ -148,6 +149,80 @@ function App() {
   const [editingCategoryName, setEditingCategoryName] = useState('')
   const [chipMenuPhraseId, setChipMenuPhraseId] = useState<number | null>(null)
   const [draggingPhraseId, setDraggingPhraseId] = useState<number | null>(null)
+
+  const i18n = {
+    de: {
+      login: 'Login',
+      username: 'Benutzername',
+      password: 'Passwort',
+      loginFailed: 'Login fehlgeschlagen',
+      syncing: 'syncing...',
+      logout: 'Logout',
+      dashboard: 'Dashboard',
+      library: 'Library',
+      composer: 'Composer',
+      characters: 'Characters',
+      categories: 'Kategorien',
+      add: 'Hinzufügen',
+      newCategory: 'Neue Kategorie',
+      phrases: 'Phrasen',
+      selectCategory: 'Kategorie auswählen',
+      newPhrase: '+ Neue Phrase',
+      inSelectedCategory: 'In ausgewählter Kategorie',
+      noPhrases: 'Keine Phrasen in der ausgewählten Kategorie.',
+      createPhrase: 'Phrase erstellen',
+      editPhrase: 'Phrase bearbeiten',
+      phraseText: 'Phrase Text',
+      defaultWeight: 'Default Weight (optional)',
+      notes: 'Notizen',
+      requiredLora: 'Required LoRA',
+      cancel: 'Abbrechen',
+      create: 'Erstellen',
+      save: 'Speichern',
+      language: 'Sprache',
+      german: 'Deutsch',
+      english: 'Englisch',
+      phrasePicker: 'Phrase Picker',
+      positive: 'Positiv',
+      negative: 'Negativ',
+    },
+    en: {
+      login: 'Login',
+      username: 'username',
+      password: 'password',
+      loginFailed: 'Login failed',
+      syncing: 'syncing...',
+      logout: 'Logout',
+      dashboard: 'Dashboard',
+      library: 'Library',
+      composer: 'Composer',
+      characters: 'Characters',
+      categories: 'Categories',
+      add: 'Add',
+      newCategory: 'New category',
+      phrases: 'Phrases',
+      selectCategory: 'Select category',
+      newPhrase: '+ New phrase',
+      inSelectedCategory: 'In selected category',
+      noPhrases: 'No phrases in selected category.',
+      createPhrase: 'Create phrase',
+      editPhrase: 'Edit phrase',
+      phraseText: 'Phrase text',
+      defaultWeight: 'Default weight (optional)',
+      notes: 'notes',
+      requiredLora: 'required LoRA',
+      cancel: 'Cancel',
+      create: 'Create',
+      save: 'Save',
+      language: 'Language',
+      german: 'German',
+      english: 'English',
+      phrasePicker: 'Phrase picker',
+      positive: 'Positive',
+      negative: 'Negative',
+    },
+  } as const
+  const t = i18n[language]
 
   const [presetName, setPresetName] = useState('')
   const [characterName, setCharacterName] = useState('')
@@ -575,7 +650,7 @@ function App() {
         body: JSON.stringify({ username: loginUser, password: loginPass }),
       })
       if (!res.ok) {
-        setLoginError('Login failed')
+        setLoginError(t.loginFailed)
         return
       }
       const data = (await res.json()) as { token: string }
@@ -583,7 +658,7 @@ function App() {
       setIsAuthenticated(true)
       void loadAll()
     } catch {
-      setLoginError('Login failed')
+      setLoginError(t.loginFailed)
     }
   }
 
@@ -596,14 +671,17 @@ function App() {
     <main style={{ background: `radial-gradient(circle at top, ${ui.bg2}, ${ui.bg})`, minHeight: '100vh', color: ui.text, fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div style={{ maxWidth: 1320, margin: '0 auto', padding: 24 }}>
         {!isAuthenticated ? (
-          <Panel title="Login">
-            <form onSubmit={login} style={{ display: 'grid', gap: 8, maxWidth: 420 }}>
-              <input style={inputStyle} value={loginUser} onChange={(e) => setLoginUser(e.target.value)} placeholder="username" />
-              <input style={inputStyle} type="password" value={loginPass} onChange={(e) => setLoginPass(e.target.value)} placeholder="password" />
-              <button style={btnStyle} type="submit">Login</button>
+          <div style={{ minHeight: '80vh', display: 'grid', placeItems: 'center' }}>
+          <section style={{ width: 'min(460px, 100%)', background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 18, padding: 22, boxShadow: ui.shadow }}>
+            <h3 style={{ marginTop: 0 }}>{t.login}</h3>
+            <form onSubmit={login} style={{ display: 'grid', gap: 10 }}>
+              <input style={inputStyle} value={loginUser} onChange={(e) => setLoginUser(e.target.value)} placeholder={t.username} />
+              <input style={inputStyle} type="password" value={loginPass} onChange={(e) => setLoginPass(e.target.value)} placeholder={t.password} />
+              <button style={btnStyle} type="submit">{t.login}</button>
               {loginError && <span style={{ color: ui.danger }}>{loginError}</span>}
             </form>
-          </Panel>
+          </section>
+          </div>
         ) : (
           <>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -615,20 +693,25 @@ function App() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <label style={{ color: ui.muted }}>{t.language}</label>
+            <select style={{ ...inputStyle, padding: '6px 10px' }} value={language} onChange={(e) => setLanguage(e.target.value as 'de' | 'en')}>
+              <option value="de">{t.german}</option>
+              <option value="en">{t.english}</option>
+            </select>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: ui.muted }}>
               <span style={{ width: 10, height: 10, borderRadius: 999, background: loading ? ui.danger : ui.ok, display: 'inline-block' }} />
-              {loading ? 'syncing...' : ''}
+              {loading ? t.syncing : ''}
             </span>
-            <button style={btnGhostStyle} onClick={logout}>Logout</button>
+            <button style={btnGhostStyle} onClick={logout}>{t.logout}</button>
           </div>
         </header>
 
         <nav style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
           {[
-            ['dashboard', 'Dashboard'],
-            ['library', 'Library'],
-            ['composer', 'Composer'],
-            ['characters', 'Characters'],
+            ['dashboard', t.dashboard],
+            ['library', t.library],
+            ['composer', t.composer],
+            ['characters', t.characters],
           ].map(([k, label]) => (
             <button
               key={k}
@@ -664,14 +747,20 @@ function App() {
 
         {activeTab === 'library' && (
           <section style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
-            <Panel title="Categories">
+            <Panel title={t.categories}>
               <form onSubmit={createCategory} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                <input style={inputStyle} value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="New category" />
-                <button style={btnStyle} type="submit">Add</button>
+                <input style={inputStyle} value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder={t.newCategory} />
+                <button style={btnStyle} type="submit">{t.add}</button>
               </form>
+              <div style={{ maxHeight: categories.length > 4 ? 260 : undefined, overflowY: categories.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
               {categories.map((c) => (
                 <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                  <button style={btnStyle} onClick={() => setLibrarySelectedCategoryId(c.id)}>Select</button>
+                  <button
+                    style={{ ...btnGhostStyle, borderColor: librarySelectedCategoryId === c.id ? ui.accent : ui.border }}
+                    onClick={() => setLibrarySelectedCategoryId(c.id)}
+                  >
+                    {c.name}
+                  </button>
                   {editingCategoryId === c.id ? (
                     <>
                       <input
@@ -688,15 +777,16 @@ function App() {
                     </>
                   ) : (
                     <>
-                      <button style={btnGhostStyle} onClick={() => startRenameCategory(c)}>{c.name}</button>
+                      <button style={btnGhostStyle} onClick={() => startRenameCategory(c)}>✏️</button>
                       <button style={btnGhostStyle} onClick={() => removeCategory(c.id)} title="Delete">🗑️</button>
                     </>
                   )}
                 </div>
               ))}
+              </div>
             </Panel>
 
-            <Panel title={`Phrases ${librarySelectedCategoryId ? '' : '(select category)'}`}>
+            <Panel title={`${t.phrases} ${librarySelectedCategoryId ? '' : `(${t.selectCategory})`}`}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select
                   style={inputStyle}
@@ -708,7 +798,7 @@ function App() {
                   }}
                 >
                   <option value="" disabled>
-                    Select category
+                    {t.selectCategory}
                   </option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -716,9 +806,10 @@ function App() {
                     </option>
                   ))}
                 </select>
-                <button style={btnStyle} type="button" disabled={!effectivePhraseCategoryId} onClick={openCreatePhraseModal}>+ New phrase</button>
+                <button style={btnStyle} type="button" disabled={!effectivePhraseCategoryId} onClick={openCreatePhraseModal}>{t.newPhrase}</button>
               </div>
-              <h4 style={{ margin: '8px 0', color: ui.muted }}>In selected category ({libraryCategoryPhrases.length})</h4>
+              <h4 style={{ margin: '8px 0', color: ui.muted }}>{t.inSelectedCategory} ({libraryCategoryPhrases.length})</h4>
+              <div style={{ maxHeight: libraryCategoryPhrases.length > 4 ? 320 : undefined, overflowY: libraryCategoryPhrases.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
               {libraryCategoryPhrases.map((p) => (
                 <div key={`cat-${p.id}`} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -730,6 +821,8 @@ function App() {
                   </div>
                 </div>
               ))}
+              {libraryCategoryPhrases.length === 0 && <span style={{ color: ui.muted }}>{t.noPhrases}</span>}
+              </div>
 
             </Panel>
           </section>
@@ -737,9 +830,9 @@ function App() {
 
         {activeTab === 'composer' && (
           <>
-            <Panel title="Phrase picker">
+            <Panel title={t.phrasePicker}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ color: ui.muted }}>Category:</span>
+                <span style={{ color: ui.muted }}>{t.categories}:</span>
                 <select
                   style={inputStyle}
                   value={composerSelectedCategoryId ?? ''}
@@ -774,13 +867,13 @@ function App() {
                     </button>
                     {chipMenuPhraseId === p.id && (
                       <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 20, display: 'flex', gap: 6, background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 10, padding: 6 }}>
-                        <button style={btnGhostStyle} onClick={() => { addPhraseToComposer(p, 'positive'); setChipMenuPhraseId(null) }}>➕ Positive</button>
-                        <button style={btnGhostStyle} onClick={() => { addPhraseToComposer(p, 'negative'); setChipMenuPhraseId(null) }}>➖ Negative</button>
+                        <button style={btnGhostStyle} onClick={() => { addPhraseToComposer(p, 'positive'); setChipMenuPhraseId(null) }}>➕ {t.positive}</button>
+                        <button style={btnGhostStyle} onClick={() => { addPhraseToComposer(p, 'negative'); setChipMenuPhraseId(null) }}>➖ {t.negative}</button>
                       </div>
                     )}
                   </div>
                 ))}
-                {composerCategoryPhrases.length === 0 && <span style={{ color: ui.muted }}>No phrases in selected category.</span>}
+                {composerCategoryPhrases.length === 0 && <span style={{ color: ui.muted }}>{t.noPhrases}</span>}
               </div>
             </Panel>
 
@@ -790,14 +883,14 @@ function App() {
                 onDrop={() => dropPhraseTo('positive')}
                 style={{ borderRadius: 14, boxShadow: draggingPhraseId !== null ? `0 0 0 2px ${ui.accent}` : 'none' }}
               >
-                <ComposerList title="Positive" items={positiveParts} setItems={setPositiveParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+                <ComposerList title={t.positive} items={positiveParts} setItems={setPositiveParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
               </div>
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => dropPhraseTo('negative')}
                 style={{ borderRadius: 14, boxShadow: draggingPhraseId !== null ? `0 0 0 2px ${ui.accent}` : 'none' }}
               >
-                <ComposerList title="Negative" items={negativeParts} setItems={setNegativeParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+                <ComposerList title={t.negative} items={negativeParts} setItems={setNegativeParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
               </div>
             </section>
 
@@ -850,6 +943,7 @@ function App() {
                 <input style={inputStyle} value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="Preset name" />
                 <button style={btnStyle} type="submit">Save</button>
               </form>
+              <div style={{ maxHeight: presets.length > 4 ? 260 : undefined, overflowY: presets.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
               {presets.map((preset) => (
                 <div key={preset.id} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
                   <strong>{preset.name}</strong>
@@ -857,6 +951,7 @@ function App() {
                   <button style={btnGhostStyle} onClick={() => void deletePreset(preset.id)}>Delete</button>
                 </div>
               ))}
+              </div>
             </Panel>
           </>
         )}
@@ -875,6 +970,7 @@ function App() {
               <button style={btnStyle} type="submit">Save current composer as character</button>
             </form>
 
+            <div style={{ maxHeight: characters.length > 4 ? 360 : undefined, overflowY: characters.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
             {characters.map((character) => (
               <div key={character.id} style={{ borderTop: `1px solid ${ui.border}`, padding: '10px 0' }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -893,6 +989,7 @@ function App() {
                 </div>
               </div>
             ))}
+            </div>
           </Panel>
         )}
 
@@ -900,7 +997,7 @@ function App() {
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(9,15,27,0.72)', display: 'grid', placeItems: 'center', zIndex: 50, padding: 16 }}>
             <div style={{ width: 'min(680px, 100%)', background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 14, padding: 14, boxShadow: ui.shadow }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <h3 style={{ margin: 0 }}>{editingPhraseId === null ? 'Create phrase' : 'Edit phrase'}</h3>
+                <h3 style={{ margin: 0 }}>{editingPhraseId === null ? t.createPhrase : t.editPhrase}</h3>
                 <button style={btnGhostStyle} onClick={closePhraseModal}>✕</button>
               </div>
               <form onSubmit={submitPhraseForm} style={{ display: 'grid', gap: 8 }}>
@@ -914,7 +1011,7 @@ function App() {
                   }}
                 >
                   <option value="" disabled>
-                    Select category
+                    {t.selectCategory}
                   </option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -922,13 +1019,13 @@ function App() {
                     </option>
                   ))}
                 </select>
-                <input style={inputStyle} value={newPhraseText} onChange={(e) => setNewPhraseText(e.target.value)} placeholder="Phrase text" />
-                <input style={inputStyle} value={newPhraseWeight} onChange={(e) => setNewPhraseWeight(e.target.value)} placeholder="default weight (optional)" type="number" step="0.1" />
-                <input style={inputStyle} value={newPhraseNotes} onChange={(e) => setNewPhraseNotes(e.target.value)} placeholder="notes" />
-                <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder="required LoRA" />
+                <input style={inputStyle} value={newPhraseText} onChange={(e) => setNewPhraseText(e.target.value)} placeholder={t.phraseText} />
+                <input style={inputStyle} value={newPhraseWeight} onChange={(e) => setNewPhraseWeight(e.target.value)} placeholder={t.defaultWeight} type="number" step="0.1" />
+                <input style={inputStyle} value={newPhraseNotes} onChange={(e) => setNewPhraseNotes(e.target.value)} placeholder={t.notes} />
+                <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder={t.requiredLora} />
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button style={btnGhostStyle} type="button" onClick={closePhraseModal}>Cancel</button>
-                  <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId || !newPhraseText.trim()}>{editingPhraseId === null ? 'Create' : 'Save'}</button>
+                  <button style={btnGhostStyle} type="button" onClick={closePhraseModal}>{t.cancel}</button>
+                  <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId || !newPhraseText.trim()}>{editingPhraseId === null ? t.create : t.save}</button>
                 </div>
               </form>
             </div>
@@ -977,6 +1074,7 @@ function ComposerList({
   return (
     <Panel title={title}>
       {items.length === 0 && <p style={{ color: ui.muted }}>No items yet</p>}
+      <div style={{ maxHeight: items.length > 4 ? 340 : undefined, overflowY: items.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
       {items.map((item, idx) => (
         <div key={item.id} style={{ border: `1px solid ${ui.border}`, borderRadius: 10, padding: 6, marginBottom: 6 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px auto', gap: 6, marginBottom: 6 }}>
@@ -996,6 +1094,7 @@ function ComposerList({
           <input style={inputStyle} value={item.requiredLora ?? ''} onChange={(e) => updatePart(setItems, idx, { requiredLora: e.target.value || undefined })} placeholder="Required LoRA" />
         </div>
       ))}
+      </div>
     </Panel>
   )
 }
@@ -1011,7 +1110,10 @@ const inputStyle: React.CSSProperties = {
 
 const textareaStyle: React.CSSProperties = {
   ...inputStyle,
+  display: 'block',
   width: '100%',
+  maxWidth: '100%',
+  boxSizing: 'border-box',
 }
 
 const btnStyle: React.CSSProperties = {
