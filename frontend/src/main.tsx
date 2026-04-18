@@ -231,6 +231,10 @@ function App() {
   }, [positiveParts, negativeParts, requiredLoras.length])
 
   const categoryPhrases = useMemo(() => phrases.filter((p) => p.category_id === selectedCategoryId), [phrases, selectedCategoryId])
+  const recentPhrases = useMemo(
+    () => [...phrases].sort((a, b) => (b.id ?? 0) - (a.id ?? 0)).slice(0, 20),
+    [phrases],
+  )
 
   const sortedPositiveParts = useMemo(() => orderParts(positiveParts), [positiveParts, categories])
   const sortedNegativeParts = useMemo(() => orderParts(negativeParts), [negativeParts, categories])
@@ -609,8 +613,9 @@ function App() {
                 <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder="required LoRA" />
                 <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId}>Add phrase</button>
               </form>
+              <h4 style={{ margin: '8px 0', color: ui.muted }}>In selected category ({categoryPhrases.length})</h4>
               {categoryPhrases.map((p) => (
-                <div key={p.id} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
+                <div key={`cat-${p.id}`} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                     <strong>{p.text}</strong>
                     {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
@@ -631,6 +636,20 @@ function App() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                </div>
+              ))}
+
+              <h4 style={{ margin: '14px 0 8px 0', color: ui.muted }}>Recently created (last 20)</h4>
+              {recentPhrases.map((p) => (
+                <div key={`recent-${p.id}`} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <strong>{p.text}</strong>
+                    <span style={{ color: ui.muted }}>#{p.id}</span>
+                    <span style={{ color: ui.muted }}>[{categoryNameById.get(p.category_id) || 'Uncategorized'}]</span>
+                    <button style={btnGhostStyle} onClick={() => setSelectedCategoryId(p.category_id)}>Go to category</button>
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'positive')}>➕ Positive</button>
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>➖ Negative</button>
                   </div>
                 </div>
               ))}
