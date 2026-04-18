@@ -1,10 +1,13 @@
 import os
 import re
+import secrets
+from datetime import timedelta
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 
 from .db import get_session, init_db
@@ -27,6 +30,11 @@ from .models import (
 
 app = FastAPI(title="promtdb API", version="0.4.0")
 
+AUTH_USERNAME = os.getenv("PROMPTDB_USER", "promptdb")
+AUTH_PASSWORD = os.getenv("PROMPTDB_PASS", "promptdb")
+AUTH_TOKEN_TTL_HOURS = int(os.getenv("PROMPTDB_TOKEN_TTL_HOURS", "24"))
+_TOKENS: dict[str, datetime] = {}
+
 cors_origins_raw = os.getenv("CORS_ORIGINS", "*")
 cors_origins = [o.strip() for o in cors_origins_raw.split(",") if o.strip()] or ["*"]
 
@@ -44,6 +52,37 @@ def infer_version_family(name: str) -> str:
     return re.sub(r"_v\d+$", "", clean)
 
 
+def _issue_token() -> str:
+    token = secrets.token_urlsafe(32)
+    _TOKENS[token] = datetime.now(timezone.utc) + timedelta(hours=AUTH_TOKEN_TTL_HOURS)
+    return token
+
+
+def _is_token_valid(token: str) -> bool:
+    exp = _TOKENS.get(token)
+    if not exp:
+        return False
+    if exp < datetime.now(timezone.utc):
+        _TOKENS.pop(token, None)
+        return False
+    return True
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    public_paths = {"/health", "/auth/login", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+    if request.url.path in public_paths:
+        return await call_next(request)
+
+    auth_header = request.headers.get("authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer ") else ""
+
+    if not token or not _is_token_valid(token):
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+    return await call_next(request)
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
@@ -52,6 +91,28 @@ def on_startup() -> None:
 @app.get("/health")
 def health():
     return {"ok": True, "service": "promtdb-backend"}
+
+
+@app.post("/auth/login")
+def auth_login(payload: dict):
+    username = str(payload.get("username", "")).strip()
+    password = str(payload.get("password", ""))
+
+    if username != AUTH_USERNAME or password != AUTH_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = _issue_token()
+    return {
+        "token": token,
+        "token_type": "bearer",
+        "expires_in_seconds": AUTH_TOKEN_TTL_HOURS * 3600,
+        "user": AUTH_USERNAME,
+    }
+
+
+@app.get("/auth/me")
+def auth_me():
+    return {"user": AUTH_USERNAME}
 
 
 @app.get("/categories", response_model=list[Category])

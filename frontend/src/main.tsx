@@ -64,13 +64,18 @@ type ComposerItem = {
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = localStorage.getItem('promptdb_token')
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   })
+  if (res.status === 401) {
+    throw new Error('UNAUTHORIZED')
+  }
   if (!res.ok) {
     const body = await res.text()
     throw new Error(body || `API ${res.status}`)
@@ -114,6 +119,10 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(Boolean(localStorage.getItem('promptdb_token')))
+  const [loginUser, setLoginUser] = useState('promptdb')
+  const [loginPass, setLoginPass] = useState('promptdb')
+  const [loginError, setLoginError] = useState<string | null>(null)
 
   const [categories, setCategories] = useState<Category[]>([])
   const [phrases, setPhrases] = useState<Phrase[]>([])
@@ -240,16 +249,23 @@ function App() {
       setCharacters(ch)
       if (selectedCategoryId === null && c.length > 0) setSelectedCategoryId(c[0].id)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error')
+      const msg = e instanceof Error ? e.message : 'Unknown error'
+      if (msg === 'UNAUTHORIZED') {
+        localStorage.removeItem('promptdb_token')
+        setIsAuthenticated(false)
+        setLoginError('Session expired. Please login again.')
+      } else {
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadAll()
+    if (isAuthenticated) void loadAll()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [isAuthenticated])
 
   useEffect(() => {
     if (newPhraseCategoryId === null && selectedCategoryId !== null) {
@@ -449,12 +465,53 @@ function App() {
     setPositiveParts((curr) => dedupeParts([...curr, ...pack]))
   }
 
+  async function login(e: React.FormEvent) {
+    e.preventDefault()
+    setLoginError(null)
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUser, password: loginPass }),
+      })
+      if (!res.ok) {
+        setLoginError('Login failed')
+        return
+      }
+      const data = (await res.json()) as { token: string }
+      localStorage.setItem('promptdb_token', data.token)
+      setIsAuthenticated(true)
+      void loadAll()
+    } catch {
+      setLoginError('Login failed')
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('promptdb_token')
+    setIsAuthenticated(false)
+  }
+
   return (
     <main style={{ background: ui.bg, minHeight: '100vh', color: ui.text, fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div style={{ maxWidth: 1280, margin: '0 auto', padding: 20 }}>
+        {!isAuthenticated ? (
+          <Panel title="Login">
+            <form onSubmit={login} style={{ display: 'grid', gap: 8, maxWidth: 420 }}>
+              <input style={inputStyle} value={loginUser} onChange={(e) => setLoginUser(e.target.value)} placeholder="username" />
+              <input style={inputStyle} type="password" value={loginPass} onChange={(e) => setLoginPass(e.target.value)} placeholder="password" />
+              <button style={btnStyle} type="submit">Login</button>
+              {loginError && <span style={{ color: '#ff8f8f' }}>{loginError}</span>}
+            </form>
+          </Panel>
+        ) : (
+          <>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h1 style={{ margin: 0 }}>promtdb</h1>
-          <span style={{ color: ui.muted }}>{loading ? 'syncing...' : 'ready'}</span>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ color: ui.muted }}>{loading ? 'syncing...' : 'ready'}</span>
+            <button style={btnGhostStyle} onClick={logout}>Logout</button>
+          </div>
         </header>
 
         <nav style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -690,6 +747,8 @@ function App() {
               </div>
             ))}
           </Panel>
+        )}
+          </>
         )}
       </div>
     </main>

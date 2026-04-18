@@ -25,6 +25,10 @@ Services:
 - API health: `http://localhost:18000/health`
 - Postgres: `localhost:5432` (db/user/pass: `promtdb`)
 
+Default login:
+- username: `promptdb`
+- password: `promptdb`
+
 Stop stack:
 ```bash
 docker compose down
@@ -59,11 +63,16 @@ VITE_API_URL=http://localhost:8000 npm run dev
 ### Backend
 - `DATABASE_URL` (default: `postgresql+psycopg://promtdb:promtdb@localhost:5432/promtdb`)
 - `CORS_ORIGINS` (comma-separated, default: `*`)
+- `PROMPTDB_USER` (default: `promptdb`)
+- `PROMPTDB_PASS` (default: `promptdb`)
+- `PROMPTDB_TOKEN_TTL_HOURS` (default: `24`)
 
 ### Frontend
 - `VITE_API_URL` (default: `/api`)
 
 ## API overview
+- `POST /auth/login`
+- `GET /auth/me`
 - `GET /health`
 - `GET /categories`
 - `POST /categories`
