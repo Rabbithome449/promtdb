@@ -20,7 +20,7 @@ Portainer (ohne Schnickschnack):
 - Compose path: `docker-compose.yml`
 
 Services:
-- Web UI: `http://localhost:8080`
+- Web UI: `http://localhost:17813`
 - API: `http://localhost:18000`
 - API health: `http://localhost:18000/health`
 - Postgres: `localhost:5432` (db/user/pass: `promtdb`)

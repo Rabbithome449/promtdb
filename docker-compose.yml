@@ -26,7 +26,7 @@ services:
     depends_on:
       - api
     ports:
-      - "8080:80"
+      - "17813:80"
 
 volumes:
   promtdb_pgdata:
