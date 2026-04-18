@@ -2,82 +2,63 @@
 
 Pragmatic MVP for managing Stable Diffusion prompt tags/phrases and composing positive/negative prompts.
 
-## What is implemented
+## Stack
+- Backend: FastAPI + SQLModel
+- Frontend: React + TypeScript + Vite
+- Database: PostgreSQL
+- Local test deployment: Docker Compose
 
-### Backend (FastAPI + SQLite)
-- Category CRUD
-- Phrase CRUD (with default weight, negative-default flag, notes)
-- Preset CRUD (`positive_parts` and `negative_parts` JSON)
-- Prompt composer endpoint (`POST /compose`)
-- SQLite auto-init on startup
-- Open CORS for local frontend development
+## Quick start with Docker Compose (recommended)
 
-### Frontend (React + TypeScript + Vite)
-- Category management (create, select, rename, delete)
-- Phrase management per category (create, list, delete)
-- Add phrases to composer (auto-routed to positive/negative by default flag)
-- Composer editing:
-  - change text
-  - optional weight
-  - reorder with up/down
-  - remove items
-- Live prompt output for positive and negative strings
-- Copy buttons for both outputs
-- Presets:
-  - save current composer
-  - load preset
-  - delete preset
+```bash
+docker compose up --build
+```
 
-## Project structure
-- `backend/` FastAPI + SQLModel API
-- `frontend/` React app
-- `docs/mvp-spec.md` original MVP spec
+Services:
+- Web UI: `http://localhost:8080`
+- API: `http://localhost:8000`
+- API health: `http://localhost:8000/health`
+- Postgres: `localhost:5432` (db/user/pass: `promtdb`)
 
-## Run locally
+Stop stack:
+```bash
+docker compose down
+```
 
-### 1) Backend
+Reset DB volume:
+```bash
+docker compose down -v
+```
+
+## Development without Docker
+
+### Backend
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+pip3 install -r requirements.txt
+export DATABASE_URL="postgresql+psycopg://promtdb:promtdb@localhost:5432/promtdb"
 uvicorn app.main:app --reload --port 8000
 ```
 
-Backend API: `http://localhost:8000`
-
-> If your system does not provide `venv`, install `python3-venv` first (Debian/Ubuntu), or run with your existing Python environment.
-
-### 2) Frontend
+### Frontend
 ```bash
 cd frontend
 npm install
-npm run dev
-```
-
-Frontend app: `http://localhost:5173`
-
-Optional API base override:
-```bash
+# default API base is /api for reverse-proxy mode
+# set direct API URL for vite dev server:
 VITE_API_URL=http://localhost:8000 npm run dev
 ```
 
-## Basic checks
+## Environment variables
 
-### Backend syntax check
-```bash
-cd backend
-python3 -m py_compile app/*.py
-```
+### Backend
+- `DATABASE_URL` (default: `postgresql+psycopg://promtdb:promtdb@localhost:5432/promtdb`)
+- `CORS_ORIGINS` (comma-separated, default: `*`)
 
-### Frontend production build
-```bash
-cd frontend
-npm run build
-```
+### Frontend
+- `VITE_API_URL` (default: `/api`)
 
 ## API overview
-
 - `GET /health`
 - `GET /categories`
 - `POST /categories`
