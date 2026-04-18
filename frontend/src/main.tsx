@@ -345,7 +345,7 @@ function App() {
     setEditingPhraseId(null)
     if (newPhraseCategoryId === null) setNewPhraseCategoryId(librarySelectedCategoryId ?? categories[0]?.id ?? null)
     setNewPhraseText('')
-    setNewPhraseWeight('')
+    setNewPhraseWeight('1')
     setNewPhraseNotes('')
     setNewPhraseRequiredLora('')
     setIsPhraseModalOpen(true)
@@ -372,7 +372,7 @@ function App() {
     const body = {
       category_id: effectivePhraseCategoryId,
       text: newPhraseText.trim(),
-      default_weight: newPhraseWeight.trim() ? Number(newPhraseWeight) : null,
+      default_weight: newPhraseWeight.trim() ? Number(newPhraseWeight) : 1,
       is_negative_default: false,
       notes: newPhraseNotes.trim() || null,
       required_lora: newPhraseRequiredLora.trim() || null,
@@ -485,8 +485,8 @@ function App() {
       method: 'POST',
       body: JSON.stringify({
         name: presetName.trim(),
-        positive_parts: positiveParts.map((p) => ({ text: p.text, weight: p.weight, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
-        negative_parts: negativeParts.map((p) => ({ text: p.text, weight: p.weight, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
+        positive_parts: positiveParts.map((p) => ({ text: p.text, weight: p.weight ?? 1, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
+        negative_parts: negativeParts.map((p) => ({ text: p.text, weight: p.weight ?? 1, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
       }),
     })
     setPresetName('')
@@ -494,8 +494,8 @@ function App() {
   }
 
   function loadPreset(preset: Preset) {
-    setPositiveParts(preset.positive_parts.map((p, i) => ({ id: `pp-${preset.id}-${i}-${Date.now()}`, text: p.text, weight: p.weight, category: p.category, isImportant: p.is_important, isRecurring: p.is_recurring, requiredLora: p.required_lora })))
-    setNegativeParts(preset.negative_parts.map((p, i) => ({ id: `np-${preset.id}-${i}-${Date.now()}`, text: p.text, weight: p.weight, category: p.category, isImportant: p.is_important, isRecurring: p.is_recurring, requiredLora: p.required_lora })))
+    setPositiveParts(preset.positive_parts.map((p, i) => ({ id: `pp-${preset.id}-${i}-${Date.now()}`, text: p.text, weight: p.weight ?? 1, category: p.category, isImportant: p.is_important, isRecurring: p.is_recurring, requiredLora: p.required_lora })))
+    setNegativeParts(preset.negative_parts.map((p, i) => ({ id: `np-${preset.id}-${i}-${Date.now()}`, text: p.text, weight: p.weight ?? 1, category: p.category, isImportant: p.is_important, isRecurring: p.is_recurring, requiredLora: p.required_lora })))
   }
 
   async function deletePreset(id: number) {
