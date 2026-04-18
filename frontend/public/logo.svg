@@ -1,0 +1,25 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(180 140) rotate(49) scale(460)">
+      <stop stop-color="#1A2A4E"/>
+      <stop offset="1" stop-color="#090F1D"/>
+    </radialGradient>
+    <linearGradient id="acc" x1="170" y1="120" x2="340" y2="340" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#80D6FF"/>
+      <stop offset="1" stop-color="#7F7BFF"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="20" y="20" width="472" height="472" rx="124" fill="url(#bg)"/>
+
+  <path d="M214 154C206 120 216 96 238 82C252 108 252 134 246 164" fill="url(#acc)"/>
+  <path d="M298 154C306 120 296 96 274 82C260 108 260 134 266 164" fill="url(#acc)"/>
+
+  <ellipse cx="256" cy="248" rx="94" ry="30" fill="#0E2040" stroke="#6A9BFF" stroke-width="7"/>
+  <path d="M162 248V302C162 320 204 334 256 334C308 334 350 320 350 302V248" fill="#0E2040" stroke="#6A9BFF" stroke-width="7"/>
+
+  <path d="M356 178L368 202L392 214L368 226L356 250L344 226L320 214L344 202L356 178Z" fill="#9AD8FF"/>
+  <path d="M136 274L144 290L160 298L144 306L136 322L128 306L112 298L128 290L136 274Z" fill="#B29BFF" opacity="0.9"/>
+
+  <text x="256" y="424" text-anchor="middle" fill="#D0DBFF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="800">promtdb</text>
+</svg>

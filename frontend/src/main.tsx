@@ -519,9 +519,12 @@ function App() {
         ) : (
           <>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <div>
-            <h1 style={{ margin: 0, letterSpacing: 0.2 }}>promtdb</h1>
-            <p style={{ margin: '4px 0 0 0', color: ui.muted, fontSize: 13 }}>Structured Prompt Builder for Stable Diffusion</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <img src="/logo.svg" alt="promtdb logo" style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${ui.border}` }} />
+            <div>
+              <h1 style={{ margin: 0, letterSpacing: 0.2 }}>promtdb</h1>
+              <p style={{ margin: '4px 0 0 0', color: ui.muted, fontSize: 13 }}>Structured Prompt Builder for Stable Diffusion</p>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ color: ui.muted }}>{loading ? 'syncing...' : 'ready'}</span>
