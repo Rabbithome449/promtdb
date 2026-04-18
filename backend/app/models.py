@@ -26,6 +26,7 @@ class Phrase(SQLModel, table=True):
     default_weight: Optional[float] = None
     is_negative_default: bool = False
     notes: Optional[str] = None
+    required_lora: Optional[str] = None
     sort_order: int = 0
     created_at: datetime = Field(default_factory=now_utc)
     updated_at: datetime = Field(default_factory=now_utc)
@@ -56,6 +57,7 @@ class PhraseCreate(SQLModel):
     default_weight: Optional[float] = None
     is_negative_default: bool = False
     notes: Optional[str] = None
+    required_lora: Optional[str] = None
     sort_order: int = 0
 
 
@@ -65,12 +67,17 @@ class PhraseUpdate(SQLModel):
     default_weight: Optional[float] = None
     is_negative_default: Optional[bool] = None
     notes: Optional[str] = None
+    required_lora: Optional[str] = None
     sort_order: Optional[int] = None
 
 
 class PromptPart(SQLModel):
     text: str
     weight: Optional[float] = None
+    category: Optional[str] = None
+    is_important: bool = False
+    is_recurring: bool = False
+    required_lora: Optional[str] = None
 
 
 class ComposeRequest(SQLModel):

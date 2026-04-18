@@ -111,6 +111,8 @@ def create_phrase(payload: PhraseCreate, session: Session = Depends(get_session)
 
     item = Phrase(**payload.model_dump())
     item.text = item.text.strip()
+    if item.required_lora is not None:
+        item.required_lora = item.required_lora.strip() or None
     session.add(item)
     session.commit()
     session.refresh(item)
@@ -131,6 +133,8 @@ def update_phrase(phrase_id: int, payload: PhraseUpdate, session: Session = Depe
 
     if "text" in data and data["text"] is not None:
         data["text"] = data["text"].strip()
+    if "required_lora" in data and data["required_lora"] is not None:
+        data["required_lora"] = data["required_lora"].strip() or None
 
     for key, value in data.items():
         setattr(item, key, value)

@@ -14,12 +14,17 @@ type Phrase = {
   default_weight: number | null
   is_negative_default: boolean
   notes: string | null
+  required_lora: string | null
   sort_order: number
 }
 
 type PromptPart = {
   text: string
   weight?: number
+  category?: string
+  is_important?: boolean
+  is_recurring?: boolean
+  required_lora?: string
 }
 
 type Preset = {
@@ -33,6 +38,10 @@ type ComposerItem = {
   id: string
   text: string
   weight?: number
+  category?: string
+  isImportant?: boolean
+  isRecurring?: boolean
+  requiredLora?: string
 }
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
@@ -53,7 +62,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function toPrompt(parts: ComposerItem[]) {
-  return parts
+  return [...parts]
+    .sort((a, b) => Number(Boolean(b.isImportant)) - Number(Boolean(a.isImportant)))
     .map((p) => (p.weight === undefined ? p.text : `(${p.text}:${p.weight})`))
     .join(', ')
 }
@@ -73,6 +83,7 @@ function App() {
   const [newPhraseWeight, setNewPhraseWeight] = useState('')
   const [newPhraseNegativeDefault, setNewPhraseNegativeDefault] = useState(false)
   const [newPhraseNotes, setNewPhraseNotes] = useState('')
+  const [newPhraseRequiredLora, setNewPhraseRequiredLora] = useState('')
 
   const [presetName, setPresetName] = useState('')
 
@@ -81,6 +92,31 @@ function App() {
 
   const positivePrompt = useMemo(() => toPrompt(positiveParts), [positiveParts])
   const negativePrompt = useMemo(() => toPrompt(negativeParts), [negativeParts])
+
+  const categoryNameById = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.name])),
+    [categories],
+  )
+  const categoryOptions = useMemo(() => categories.map((c) => c.name), [categories])
+
+  const requiredLoras = useMemo(() => {
+    const vals = [...positiveParts, ...negativeParts]
+      .map((p) => p.requiredLora?.trim())
+      .filter((v): v is string => Boolean(v))
+    return [...new Set(vals)]
+  }, [positiveParts, negativeParts])
+
+  const groupedPositive = useMemo(() => {
+    const map = new Map<string, ComposerItem[]>()
+    const ordered = [...positiveParts].sort((a, b) => Number(Boolean(b.isImportant)) - Number(Boolean(a.isImportant)))
+    for (const part of ordered) {
+      const key = part.isRecurring ? 'Quality / Recurring' : part.category || 'Uncategorized'
+      const curr = map.get(key) || []
+      curr.push(part)
+      map.set(key, curr)
+    }
+    return [...map.entries()]
+  }, [positiveParts])
 
   async function loadAll() {
     setLoading(true)
@@ -153,6 +189,7 @@ function App() {
         default_weight: newPhraseWeight.trim() ? Number(newPhraseWeight) : null,
         is_negative_default: newPhraseNegativeDefault,
         notes: newPhraseNotes.trim() || null,
+        required_lora: newPhraseRequiredLora.trim() || null,
         sort_order: categoryPhrases.length,
       }),
     })
@@ -160,6 +197,7 @@ function App() {
     setNewPhraseWeight('')
     setNewPhraseNegativeDefault(false)
     setNewPhraseNotes('')
+    setNewPhraseRequiredLora('')
     await loadAll()
   }
 
@@ -169,10 +207,15 @@ function App() {
   }
 
   function addPhraseToComposer(phrase: Phrase) {
+    const categoryName = categoryNameById.get(phrase.category_id)
     const item: ComposerItem = {
       id: `${phrase.id}-${Date.now()}-${Math.random()}`,
       text: phrase.text,
       weight: phrase.default_weight ?? undefined,
+      category: categoryName,
+      isImportant: false,
+      isRecurring: categoryName?.toLowerCase().includes('quality') ?? false,
+      requiredLora: phrase.required_lora ?? undefined,
     }
     if (phrase.is_negative_default) {
       setNegativeParts((curr) => [...curr, item])
@@ -215,8 +258,22 @@ function App() {
       method: 'POST',
       body: JSON.stringify({
         name: presetName.trim(),
-        positive_parts: positiveParts.map((p) => ({ text: p.text, weight: p.weight })),
-        negative_parts: negativeParts.map((p) => ({ text: p.text, weight: p.weight })),
+        positive_parts: positiveParts.map((p) => ({
+          text: p.text,
+          weight: p.weight,
+          category: p.category,
+          is_important: p.isImportant,
+          is_recurring: p.isRecurring,
+          required_lora: p.requiredLora,
+        })),
+        negative_parts: negativeParts.map((p) => ({
+          text: p.text,
+          weight: p.weight,
+          category: p.category,
+          is_important: p.isImportant,
+          is_recurring: p.isRecurring,
+          required_lora: p.requiredLora,
+        })),
       }),
     })
     setPresetName('')
@@ -224,8 +281,28 @@ function App() {
   }
 
   function loadPreset(preset: Preset) {
-    setPositiveParts(preset.positive_parts.map((p, i) => ({ id: `pp-${preset.id}-${i}-${Date.now()}`, ...p })))
-    setNegativeParts(preset.negative_parts.map((p, i) => ({ id: `np-${preset.id}-${i}-${Date.now()}`, ...p })))
+    setPositiveParts(
+      preset.positive_parts.map((p, i) => ({
+        id: `pp-${preset.id}-${i}-${Date.now()}`,
+        text: p.text,
+        weight: p.weight,
+        category: p.category,
+        isImportant: p.is_important,
+        isRecurring: p.is_recurring,
+        requiredLora: p.required_lora,
+      })),
+    )
+    setNegativeParts(
+      preset.negative_parts.map((p, i) => ({
+        id: `np-${preset.id}-${i}-${Date.now()}`,
+        text: p.text,
+        weight: p.weight,
+        category: p.category,
+        isImportant: p.is_important,
+        isRecurring: p.is_recurring,
+        requiredLora: p.required_lora,
+      })),
+    )
   }
 
   async function deletePreset(id: number) {
@@ -282,6 +359,11 @@ function App() {
               </label>
             </div>
             <input value={newPhraseNotes} onChange={(e) => setNewPhraseNotes(e.target.value)} placeholder="Notes (optional)" />
+            <input
+              value={newPhraseRequiredLora}
+              onChange={(e) => setNewPhraseRequiredLora(e.target.value)}
+              placeholder="Required LoRA (optional), e.g. character_v3"
+            />
             <button type="submit" disabled={!selectedCategoryId}>Add phrase</button>
           </form>
 
@@ -292,6 +374,7 @@ function App() {
                   <strong>{p.text}</strong>
                   {p.default_weight !== null && <span>({p.default_weight})</span>}
                   {p.is_negative_default && <span style={{ color: '#8a2be2' }}>negative</span>}
+                  {p.required_lora && <span style={{ color: '#006400' }}>LoRA: {p.required_lora}</span>}
                   <button onClick={() => addPhraseToComposer(p)}>Add to composer</button>
                   <button onClick={() => removePhrase(p.id)}>Delete</button>
                 </div>
@@ -309,6 +392,7 @@ function App() {
             title="Positive"
             items={positiveParts}
             setItems={setPositiveParts}
+            categoryOptions={categoryOptions}
             updatePart={updatePart}
             movePart={movePart}
             removePart={removePart}
@@ -317,10 +401,35 @@ function App() {
             title="Negative"
             items={negativeParts}
             setItems={setNegativeParts}
+            categoryOptions={categoryOptions}
             updatePart={updatePart}
             movePart={movePart}
             removePart={removePart}
           />
+        </div>
+
+        <div style={{ marginTop: 12, border: '1px solid #eee', borderRadius: 8, padding: 10 }}>
+          <h3 style={{ marginTop: 0 }}>Structured view (human readable)</h3>
+          {groupedPositive.length === 0 && <p style={{ opacity: 0.7 }}>No positive blocks yet.</p>}
+          {groupedPositive.map(([group, items]) => (
+            <div key={group} style={{ marginBottom: 8 }}>
+              <strong>{group}</strong>
+              <ul style={{ margin: '6px 0 0 16px' }}>
+                {items.map((i) => (
+                  <li key={i.id}>
+                    {i.text}
+                    {i.weight !== undefined ? ` (${i.weight})` : ''}
+                    {i.isImportant ? ' [important]' : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {requiredLoras.length > 0 && (
+            <p style={{ marginBottom: 0 }}>
+              <strong>Required LoRAs:</strong> {requiredLoras.join(', ')}
+            </p>
+          )}
         </div>
 
         <div style={{ marginTop: 12 }}>
@@ -360,6 +469,7 @@ function ComposerList({
   title,
   items,
   setItems,
+  categoryOptions,
   updatePart,
   movePart,
   removePart,
@@ -367,6 +477,7 @@ function ComposerList({
   title: string
   items: ComposerItem[]
   setItems: React.Dispatch<React.SetStateAction<ComposerItem[]>>
+  categoryOptions: string[]
   updatePart: (
     setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>,
     idx: number,
@@ -380,7 +491,8 @@ function ComposerList({
       <h3>{title}</h3>
       {items.length === 0 && <p style={{ opacity: 0.7 }}>No parts yet.</p>}
       {items.map((item, idx) => (
-        <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 110px auto', gap: 8, marginBottom: 8 }}>
+        <div key={item.id} style={{ border: '1px solid #f2f2f2', borderRadius: 6, padding: 8, marginBottom: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px auto', gap: 8, marginBottom: 8 }}>
           <input value={item.text} onChange={(e) => updatePart(setItems, idx, { text: e.target.value })} />
           <input
             type="number"
@@ -393,6 +505,44 @@ function ComposerList({
             <button onClick={() => movePart(setItems, idx, -1)}>↑</button>
             <button onClick={() => movePart(setItems, idx, 1)}>↓</button>
             <button onClick={() => removePart(setItems, idx)}>✕</button>
+          </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'center' }}>
+            <select
+              value={item.category ?? ''}
+              onChange={(e) => updatePart(setItems, idx, { category: e.target.value || undefined })}
+            >
+              <option value="">No category</option>
+              {categoryOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(item.isImportant)}
+                onChange={(e) => updatePart(setItems, idx, { isImportant: e.target.checked })}
+              />
+              important
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(item.isRecurring)}
+                onChange={(e) => updatePart(setItems, idx, { isRecurring: e.target.checked })}
+              />
+              recurring/quality
+            </label>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <input
+              value={item.requiredLora ?? ''}
+              onChange={(e) => updatePart(setItems, idx, { requiredLora: e.target.value || undefined })}
+              placeholder="Required LoRA (optional)"
+              style={{ width: '100%' }}
+            />
           </div>
         </div>
       ))}
