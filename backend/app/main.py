@@ -11,6 +11,9 @@ from .models import (
     Category,
     CategoryCreate,
     CategoryUpdate,
+    CharacterPreset,
+    CharacterPresetCreate,
+    CharacterPresetUpdate,
     ComposeRequest,
     ComposeResponse,
     Phrase,
@@ -223,6 +226,69 @@ def delete_preset(preset_id: int, session: Session = Depends(get_session)):
     item = session.get(PromptPreset, preset_id)
     if not item:
         raise HTTPException(status_code=404, detail="Preset not found")
+    session.delete(item)
+    session.commit()
+    return {"ok": True}
+
+
+@app.get("/characters", response_model=list[CharacterPreset])
+def list_characters(session: Session = Depends(get_session)):
+    return session.exec(select(CharacterPreset).order_by(CharacterPreset.id.desc())).all()
+
+
+@app.post("/characters", response_model=CharacterPreset)
+def create_character(payload: CharacterPresetCreate, session: Session = Depends(get_session)):
+    item = CharacterPreset(
+        name=payload.name.strip(),
+        description=(payload.description or "").strip() or None,
+        positive_prompt=payload.positive_prompt.strip(),
+        negative_prompt=payload.negative_prompt.strip(),
+        positive_parts=[part.model_dump() for part in payload.positive_parts],
+        negative_parts=[part.model_dump() for part in payload.negative_parts],
+        required_loras=[l.strip() for l in payload.required_loras if l.strip()],
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+
+@app.patch("/characters/{character_id}", response_model=CharacterPreset)
+def update_character(character_id: int, payload: CharacterPresetUpdate, session: Session = Depends(get_session)):
+    item = session.get(CharacterPreset, character_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] is not None:
+        data["name"] = data["name"].strip()
+    if "description" in data and data["description"] is not None:
+        data["description"] = data["description"].strip() or None
+    if "positive_prompt" in data and data["positive_prompt"] is not None:
+        data["positive_prompt"] = data["positive_prompt"].strip()
+    if "negative_prompt" in data and data["negative_prompt"] is not None:
+        data["negative_prompt"] = data["negative_prompt"].strip()
+    if "positive_parts" in data and data["positive_parts"] is not None:
+        data["positive_parts"] = [part.model_dump() for part in data["positive_parts"]]
+    if "negative_parts" in data and data["negative_parts"] is not None:
+        data["negative_parts"] = [part.model_dump() for part in data["negative_parts"]]
+    if "required_loras" in data and data["required_loras"] is not None:
+        data["required_loras"] = [l.strip() for l in data["required_loras"] if l.strip()]
+
+    for key, value in data.items():
+        setattr(item, key, value)
+    item.updated_at = datetime.now(timezone.utc)
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+
+@app.delete("/characters/{character_id}")
+def delete_character(character_id: int, session: Session = Depends(get_session)):
+    item = session.get(CharacterPreset, character_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Character not found")
     session.delete(item)
     session.commit()
     return {"ok": True}

@@ -41,6 +41,19 @@ class PromptPreset(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=now_utc)
 
 
+class CharacterPreset(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, min_length=1)
+    description: Optional[str] = None
+    positive_prompt: str = ""
+    negative_prompt: str = ""
+    positive_parts: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    negative_parts: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    required_loras: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=now_utc)
+    updated_at: datetime = Field(default_factory=now_utc)
+
+
 class CategoryCreate(SQLModel):
     name: str
     sort_order: int = 0
@@ -100,3 +113,23 @@ class PromptPresetUpdate(SQLModel):
     name: Optional[str] = None
     positive_parts: Optional[list[PromptPart]] = None
     negative_parts: Optional[list[PromptPart]] = None
+
+
+class CharacterPresetCreate(SQLModel):
+    name: str
+    description: Optional[str] = None
+    positive_prompt: str = ""
+    negative_prompt: str = ""
+    positive_parts: list[PromptPart] = Field(default_factory=list)
+    negative_parts: list[PromptPart] = Field(default_factory=list)
+    required_loras: list[str] = Field(default_factory=list)
+
+
+class CharacterPresetUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    positive_prompt: Optional[str] = None
+    negative_prompt: Optional[str] = None
+    positive_parts: Optional[list[PromptPart]] = None
+    negative_parts: Optional[list[PromptPart]] = None
+    required_loras: Optional[list[str]] = None

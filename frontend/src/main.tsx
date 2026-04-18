@@ -34,6 +34,17 @@ type Preset = {
   negative_parts: PromptPart[]
 }
 
+type CharacterPreset = {
+  id: number
+  name: string
+  description: string | null
+  positive_prompt: string
+  negative_prompt: string
+  positive_parts: PromptPart[]
+  negative_parts: PromptPart[]
+  required_loras: string[]
+}
+
 type ComposerItem = {
   id: string
   text: string
@@ -75,6 +86,7 @@ function App() {
   const [categories, setCategories] = useState<Category[]>([])
   const [phrases, setPhrases] = useState<Phrase[]>([])
   const [presets, setPresets] = useState<Preset[]>([])
+  const [characters, setCharacters] = useState<CharacterPreset[]>([])
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
 
@@ -86,6 +98,8 @@ function App() {
   const [newPhraseRequiredLora, setNewPhraseRequiredLora] = useState('')
 
   const [presetName, setPresetName] = useState('')
+  const [characterName, setCharacterName] = useState('')
+  const [characterDescription, setCharacterDescription] = useState('')
 
   const [positiveParts, setPositiveParts] = useState<ComposerItem[]>([])
   const [negativeParts, setNegativeParts] = useState<ComposerItem[]>([])
@@ -122,14 +136,16 @@ function App() {
     setLoading(true)
     setError(null)
     try {
-      const [c, p, pr] = await Promise.all([
+      const [c, p, pr, ch] = await Promise.all([
         api<Category[]>('/categories'),
         api<Phrase[]>('/phrases'),
         api<Preset[]>('/presets'),
+        api<CharacterPreset[]>('/characters'),
       ])
       setCategories(c)
       setPhrases(p)
       setPresets(pr)
+      setCharacters(ch)
       if (selectedCategoryId === null && c.length > 0) {
         setSelectedCategoryId(c[0].id)
       }
@@ -311,6 +327,71 @@ function App() {
     await loadAll()
   }
 
+  async function saveCharacter(e: React.FormEvent) {
+    e.preventDefault()
+    if (!characterName.trim()) return
+    await api('/characters', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: characterName.trim(),
+        description: characterDescription.trim() || null,
+        positive_prompt: positivePrompt,
+        negative_prompt: negativePrompt,
+        positive_parts: positiveParts.map((p) => ({
+          text: p.text,
+          weight: p.weight,
+          category: p.category,
+          is_important: p.isImportant,
+          is_recurring: p.isRecurring,
+          required_lora: p.requiredLora,
+        })),
+        negative_parts: negativeParts.map((p) => ({
+          text: p.text,
+          weight: p.weight,
+          category: p.category,
+          is_important: p.isImportant,
+          is_recurring: p.isRecurring,
+          required_lora: p.requiredLora,
+        })),
+        required_loras: requiredLoras,
+      }),
+    })
+    setCharacterName('')
+    setCharacterDescription('')
+    await loadAll()
+  }
+
+  function loadCharacter(character: CharacterPreset) {
+    setPositiveParts(
+      character.positive_parts.map((p, i) => ({
+        id: `cp-${character.id}-${i}-${Date.now()}`,
+        text: p.text,
+        weight: p.weight,
+        category: p.category,
+        isImportant: p.is_important,
+        isRecurring: p.is_recurring,
+        requiredLora: p.required_lora,
+      })),
+    )
+    setNegativeParts(
+      character.negative_parts.map((p, i) => ({
+        id: `cn-${character.id}-${i}-${Date.now()}`,
+        text: p.text,
+        weight: p.weight,
+        category: p.category,
+        isImportant: p.is_important,
+        isRecurring: p.is_recurring,
+        requiredLora: p.required_lora,
+      })),
+    )
+  }
+
+  async function deleteCharacter(id: number) {
+    if (!window.confirm('Delete character preset?')) return
+    await api(`/characters/${id}`, { method: 'DELETE' })
+    await loadAll()
+  }
+
   return (
     <main style={{ fontFamily: 'Inter, system-ui, sans-serif', padding: 20, maxWidth: 1200, margin: '0 auto' }}>
       <h1 style={{ marginTop: 0 }}>promtdb MVP</h1>
@@ -457,6 +538,39 @@ function App() {
               <strong>{preset.name}</strong>
               <button onClick={() => loadPreset(preset)}>Load</button>
               <button onClick={() => void deletePreset(preset.id)}>Delete</button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 20 }}>
+        <h2>Character presets (full prompt)</h2>
+        <form onSubmit={saveCharacter} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+          <input
+            value={characterName}
+            onChange={(e) => setCharacterName(e.target.value)}
+            placeholder="Character name (e.g. cyberpunk_anna_v1)"
+          />
+          <input
+            value={characterDescription}
+            onChange={(e) => setCharacterDescription(e.target.value)}
+            placeholder="Description (optional)"
+          />
+          <button type="submit">Save current full prompt as character</button>
+        </form>
+
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {characters.map((character) => (
+            <li key={character.id} style={{ borderTop: '1px solid #eee', padding: '8px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <strong>{character.name}</strong>
+                {character.required_loras.length > 0 && (
+                  <span style={{ color: '#006400' }}>LoRAs: {character.required_loras.join(', ')}</span>
+                )}
+                <button onClick={() => loadCharacter(character)}>Load</button>
+                <button onClick={() => void deleteCharacter(character.id)}>Delete</button>
+              </div>
+              {character.description && <small>{character.description}</small>}
             </li>
           ))}
         </ul>

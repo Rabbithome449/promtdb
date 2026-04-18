@@ -73,3 +73,7 @@ VITE_API_URL=http://localhost:8000 npm run dev
 - `POST /presets`
 - `PATCH /presets/{id}`
 - `DELETE /presets/{id}`
+- `GET /characters`
+- `POST /characters`
+- `PATCH /characters/{id}`
+- `DELETE /characters/{id}`
