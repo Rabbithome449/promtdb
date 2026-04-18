@@ -144,6 +144,10 @@ function App() {
   const [newPhraseRequiredLora, setNewPhraseRequiredLora] = useState('')
   const [isPhraseModalOpen, setIsPhraseModalOpen] = useState(false)
   const [editingPhraseId, setEditingPhraseId] = useState<number | null>(null)
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
+  const [editingCategoryName, setEditingCategoryName] = useState('')
+  const [chipMenuPhraseId, setChipMenuPhraseId] = useState<number | null>(null)
+  const [draggingPhraseId, setDraggingPhraseId] = useState<number | null>(null)
 
   const [presetName, setPresetName] = useState('')
   const [characterName, setCharacterName] = useState('')
@@ -323,9 +327,8 @@ function App() {
     await loadAll()
   }
 
-  async function renameCategory(id: number, current: string) {
-    const name = window.prompt('New category name', current)
-    if (!name?.trim()) return
+  async function renameCategory(id: number, name: string) {
+    if (!name.trim()) return
     await api(`/categories/${id}`, { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) })
     await loadAll()
   }
@@ -421,6 +424,35 @@ function App() {
     }
     if (target === 'negative') setNegativeParts((curr) => [...curr, item])
     else setPositiveParts((curr) => [...curr, item])
+  }
+
+  function startRenameCategory(category: Category) {
+    setEditingCategoryId(category.id)
+    setEditingCategoryName(category.name)
+  }
+
+  async function saveRenamedCategory() {
+    if (editingCategoryId === null) return
+    await renameCategory(editingCategoryId, editingCategoryName)
+    setEditingCategoryId(null)
+    setEditingCategoryName('')
+  }
+
+  function cancelRenameCategory() {
+    setEditingCategoryId(null)
+    setEditingCategoryName('')
+  }
+
+  function getPhraseById(id: number | null) {
+    if (id === null) return null
+    return phrases.find((p) => p.id === id) ?? null
+  }
+
+  function dropPhraseTo(target: 'positive' | 'negative') {
+    const phrase = getPhraseById(draggingPhraseId)
+    if (!phrase) return
+    addPhraseToComposer(phrase, target)
+    setDraggingPhraseId(null)
   }
 
   function updatePart(setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number, patch: Partial<ComposerItem>) {
@@ -585,7 +617,7 @@ function App() {
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: ui.muted }}>
               <span style={{ width: 10, height: 10, borderRadius: 999, background: loading ? ui.danger : ui.ok, display: 'inline-block' }} />
-              {loading ? 'syncing...' : 'ready'}
+              {loading ? 'syncing...' : ''}
             </span>
             <button style={btnGhostStyle} onClick={logout}>Logout</button>
           </div>
@@ -639,9 +671,27 @@ function App() {
               </form>
               {categories.map((c) => (
                 <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                  <button style={btnStyle} onClick={() => setLibrarySelectedCategoryId(c.id)}>{c.name}</button>
-                  <button style={btnGhostStyle} onClick={() => renameCategory(c.id, c.name)}>Rename</button>
-                  <button style={btnGhostStyle} onClick={() => removeCategory(c.id)}>Delete</button>
+                  <button style={btnStyle} onClick={() => setLibrarySelectedCategoryId(c.id)}>Select</button>
+                  {editingCategoryId === c.id ? (
+                    <>
+                      <input
+                        style={inputStyle}
+                        value={editingCategoryName}
+                        onChange={(e) => setEditingCategoryName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void saveRenamedCategory()
+                          if (e.key === 'Escape') cancelRenameCategory()
+                        }}
+                      />
+                      <button style={btnGhostStyle} onClick={() => void saveRenamedCategory()}>Save</button>
+                      <button style={btnGhostStyle} onClick={cancelRenameCategory}>✕</button>
+                    </>
+                  ) : (
+                    <>
+                      <button style={btnGhostStyle} onClick={() => startRenameCategory(c)}>{c.name}</button>
+                      <button style={btnGhostStyle} onClick={() => removeCategory(c.id)} title="Delete">🗑️</button>
+                    </>
+                  )}
                 </div>
               ))}
             </Panel>
@@ -702,14 +752,32 @@ function App() {
                   ))}
                 </select>
               </div>
-              <div style={{ display: 'grid', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {composerCategoryPhrases.map((p) => (
-                  <div key={`picker-${p.id}`} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <strong>{p.text}</strong>
-                    {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
-                    {p.required_lora && <span style={{ color: ui.ok }}>LoRA: {p.required_lora}</span>}
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'positive')}>➕ Positive</button>
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>➖ Negative</button>
+                  <div key={`picker-${p.id}`} style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={() => setDraggingPhraseId(p.id)}
+                      onDragEnd={() => setDraggingPhraseId(null)}
+                      onClick={() => setChipMenuPhraseId((curr) => (curr === p.id ? null : p.id))}
+                      style={{
+                        ...btnGhostStyle,
+                        borderRadius: 999,
+                        padding: '8px 12px',
+                        background: ui.panel2,
+                        borderColor: chipMenuPhraseId === p.id ? ui.accent : ui.border,
+                      }}
+                    >
+                      {p.text}
+                      {p.default_weight !== null ? ` (${p.default_weight})` : ''}
+                    </button>
+                    {chipMenuPhraseId === p.id && (
+                      <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 20, display: 'flex', gap: 6, background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 10, padding: 6 }}>
+                        <button style={btnGhostStyle} onClick={() => { addPhraseToComposer(p, 'positive'); setChipMenuPhraseId(null) }}>➕ Positive</button>
+                        <button style={btnGhostStyle} onClick={() => { addPhraseToComposer(p, 'negative'); setChipMenuPhraseId(null) }}>➖ Negative</button>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {composerCategoryPhrases.length === 0 && <span style={{ color: ui.muted }}>No phrases in selected category.</span>}
@@ -717,8 +785,20 @@ function App() {
             </Panel>
 
             <section style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 12 }}>
-              <ComposerList title="Positive" items={positiveParts} setItems={setPositiveParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
-              <ComposerList title="Negative" items={negativeParts} setItems={setNegativeParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => dropPhraseTo('positive')}
+                style={{ borderRadius: 14, boxShadow: draggingPhraseId !== null ? `0 0 0 2px ${ui.accent}` : 'none' }}
+              >
+                <ComposerList title="Positive" items={positiveParts} setItems={setPositiveParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+              </div>
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => dropPhraseTo('negative')}
+                style={{ borderRadius: 14, boxShadow: draggingPhraseId !== null ? `0 0 0 2px ${ui.accent}` : 'none' }}
+              >
+                <ComposerList title="Negative" items={negativeParts} setItems={setNegativeParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+              </div>
             </section>
 
             <Panel title="Prompt Inspector">
