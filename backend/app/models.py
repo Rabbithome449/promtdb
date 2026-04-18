@@ -44,6 +44,8 @@ class PromptPreset(SQLModel, table=True):
 class CharacterPreset(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True, min_length=1)
+    version_family: str = Field(index=True, default="")
+    version: int = 1
     description: Optional[str] = None
     required_sdxl_base_model: Optional[str] = None
     recommended_sdxl_base_model: Optional[str] = None
@@ -119,6 +121,8 @@ class PromptPresetUpdate(SQLModel):
 
 class CharacterPresetCreate(SQLModel):
     name: str
+    version_family: Optional[str] = None
+    version: Optional[int] = None
     description: Optional[str] = None
     required_sdxl_base_model: Optional[str] = None
     recommended_sdxl_base_model: Optional[str] = None
@@ -131,6 +135,8 @@ class CharacterPresetCreate(SQLModel):
 
 class CharacterPresetUpdate(SQLModel):
     name: Optional[str] = None
+    version_family: Optional[str] = None
+    version: Optional[int] = None
     description: Optional[str] = None
     required_sdxl_base_model: Optional[str] = None
     recommended_sdxl_base_model: Optional[str] = None

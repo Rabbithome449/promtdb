@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -36,6 +37,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def infer_version_family(name: str) -> str:
+    clean = name.strip().lower().replace(" ", "_")
+    return re.sub(r"_v\d+$", "", clean)
 
 
 @app.on_event("startup")
@@ -238,8 +244,12 @@ def list_characters(session: Session = Depends(get_session)):
 
 @app.post("/characters", response_model=CharacterPreset)
 def create_character(payload: CharacterPresetCreate, session: Session = Depends(get_session)):
+    family = (payload.version_family or "").strip() or infer_version_family(payload.name)
+    version = payload.version if payload.version and payload.version > 0 else 1
     item = CharacterPreset(
         name=payload.name.strip(),
+        version_family=family,
+        version=version,
         description=(payload.description or "").strip() or None,
         required_sdxl_base_model=(payload.required_sdxl_base_model or "").strip() or None,
         recommended_sdxl_base_model=(payload.recommended_sdxl_base_model or "").strip() or None,
@@ -264,6 +274,10 @@ def update_character(character_id: int, payload: CharacterPresetUpdate, session:
     data = payload.model_dump(exclude_unset=True)
     if "name" in data and data["name"] is not None:
         data["name"] = data["name"].strip()
+    if "version_family" in data and data["version_family"] is not None:
+        data["version_family"] = data["version_family"].strip().lower().replace(" ", "_")
+    if "version" in data and data["version"] is not None and data["version"] < 1:
+        raise HTTPException(status_code=400, detail="version must be >= 1")
     if "description" in data and data["description"] is not None:
         data["description"] = data["description"].strip() or None
     if "required_sdxl_base_model" in data and data["required_sdxl_base_model"] is not None:
@@ -298,3 +312,32 @@ def delete_character(character_id: int, session: Session = Depends(get_session))
     session.delete(item)
     session.commit()
     return {"ok": True}
+
+
+@app.post("/characters/{character_id}/duplicate-version", response_model=CharacterPreset)
+def duplicate_character_version(character_id: int, session: Session = Depends(get_session)):
+    src = session.get(CharacterPreset, character_id)
+    if not src:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    family = src.version_family or infer_version_family(src.name)
+    versions = session.exec(select(CharacterPreset.version).where(CharacterPreset.version_family == family)).all()
+    next_version = (max(versions) if versions else 0) + 1
+
+    dup = CharacterPreset(
+        name=f"{family}_v{next_version}",
+        version_family=family,
+        version=next_version,
+        description=src.description,
+        required_sdxl_base_model=src.required_sdxl_base_model,
+        recommended_sdxl_base_model=src.recommended_sdxl_base_model,
+        positive_prompt=src.positive_prompt,
+        negative_prompt=src.negative_prompt,
+        positive_parts=src.positive_parts,
+        negative_parts=src.negative_parts,
+        required_loras=src.required_loras,
+    )
+    session.add(dup)
+    session.commit()
+    session.refresh(dup)
+    return dup

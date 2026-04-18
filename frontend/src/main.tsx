@@ -37,6 +37,8 @@ type Preset = {
 type CharacterPreset = {
   id: number
   name: string
+  version_family: string
+  version: number
   description: string | null
   required_sdxl_base_model: string | null
   recommended_sdxl_base_model: string | null
@@ -101,6 +103,8 @@ function App() {
 
   const [presetName, setPresetName] = useState('')
   const [characterName, setCharacterName] = useState('')
+  const [characterVersionFamily, setCharacterVersionFamily] = useState('')
+  const [characterVersion, setCharacterVersion] = useState('1')
   const [characterDescription, setCharacterDescription] = useState('')
   const [characterRequiredSdxlBaseModel, setCharacterRequiredSdxlBaseModel] = useState('')
   const [characterRecommendedSdxlBaseModel, setCharacterRecommendedSdxlBaseModel] = useState('')
@@ -338,6 +342,8 @@ function App() {
       method: 'POST',
       body: JSON.stringify({
         name: characterName.trim(),
+        version_family: characterVersionFamily.trim() || null,
+        version: characterVersion.trim() ? Number(characterVersion) : null,
         description: characterDescription.trim() || null,
         required_sdxl_base_model: characterRequiredSdxlBaseModel.trim() || null,
         recommended_sdxl_base_model: characterRecommendedSdxlBaseModel.trim() || null,
@@ -363,6 +369,8 @@ function App() {
       }),
     })
     setCharacterName('')
+    setCharacterVersionFamily('')
+    setCharacterVersion('1')
     setCharacterDescription('')
     setCharacterRequiredSdxlBaseModel('')
     setCharacterRecommendedSdxlBaseModel('')
@@ -397,6 +405,11 @@ function App() {
   async function deleteCharacter(id: number) {
     if (!window.confirm('Delete character preset?')) return
     await api(`/characters/${id}`, { method: 'DELETE' })
+    await loadAll()
+  }
+
+  async function duplicateCharacterVersion(id: number) {
+    await api(`/characters/${id}/duplicate-version`, { method: 'POST' })
     await loadAll()
   }
 
@@ -564,6 +577,20 @@ function App() {
             onChange={(e) => setCharacterDescription(e.target.value)}
             placeholder="Description (optional)"
           />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
+            <input
+              value={characterVersionFamily}
+              onChange={(e) => setCharacterVersionFamily(e.target.value)}
+              placeholder="Version family (optional, e.g. anna_cyberpunk)"
+            />
+            <input
+              value={characterVersion}
+              onChange={(e) => setCharacterVersion(e.target.value)}
+              type="number"
+              min={1}
+              placeholder="Version"
+            />
+          </div>
           <input
             value={characterRequiredSdxlBaseModel}
             onChange={(e) => setCharacterRequiredSdxlBaseModel(e.target.value)}
@@ -582,6 +609,8 @@ function App() {
             <li key={character.id} style={{ borderTop: '1px solid #eee', padding: '8px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <strong>{character.name}</strong>
+                <span style={{ color: '#555' }}>family: {character.version_family || 'n/a'}</span>
+                <span style={{ color: '#555' }}>v{character.version}</span>
                 {character.required_sdxl_base_model && (
                   <span style={{ color: '#b22222' }}>Required SDXL: {character.required_sdxl_base_model}</span>
                 )}
@@ -592,6 +621,7 @@ function App() {
                   <span style={{ color: '#006400' }}>LoRAs: {character.required_loras.join(', ')}</span>
                 )}
                 <button onClick={() => loadCharacter(character)}>Load</button>
+                <button onClick={() => void duplicateCharacterVersion(character.id)}>Duplicate as next version</button>
                 <button onClick={() => void deleteCharacter(character.id)}>Delete</button>
               </div>
               {character.description && <small>{character.description}</small>}

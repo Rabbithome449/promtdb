@@ -25,6 +25,10 @@ def init_db() -> None:
 
         if "characterpreset" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("characterpreset")}
+            if "version_family" not in cols:
+                conn.execute(text("ALTER TABLE characterpreset ADD COLUMN version_family VARCHAR DEFAULT ''"))
+            if "version" not in cols:
+                conn.execute(text("ALTER TABLE characterpreset ADD COLUMN version INTEGER DEFAULT 1"))
             if "required_sdxl_base_model" not in cols:
                 conn.execute(text("ALTER TABLE characterpreset ADD COLUMN required_sdxl_base_model VARCHAR"))
             if "recommended_sdxl_base_model" not in cols:
