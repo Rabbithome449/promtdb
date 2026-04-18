@@ -95,10 +95,7 @@ function dedupeParts(parts: ComposerItem[]) {
 }
 
 function toPrompt(parts: ComposerItem[]) {
-  return [...parts]
-    .sort((a, b) => Number(Boolean(b.isImportant)) - Number(Boolean(a.isImportant)))
-    .map((p) => (p.weight === undefined ? p.text : `(${p.text}:${p.weight})`))
-    .join(', ')
+  return parts.map((p) => (p.weight === undefined ? p.text : `(${p.text}:${p.weight})`)).join(', ')
 }
 
 const ui = {
@@ -128,7 +125,6 @@ function App() {
   const [newCategoryName, setNewCategoryName] = useState('')
   const [newPhraseText, setNewPhraseText] = useState('')
   const [newPhraseWeight, setNewPhraseWeight] = useState('')
-  const [newPhraseNegativeDefault, setNewPhraseNegativeDefault] = useState(false)
   const [newPhraseNotes, setNewPhraseNotes] = useState('')
   const [newPhraseRequiredLora, setNewPhraseRequiredLora] = useState('')
 
@@ -143,11 +139,23 @@ function App() {
   const [positiveParts, setPositiveParts] = useState<ComposerItem[]>([])
   const [negativeParts, setNegativeParts] = useState<ComposerItem[]>([])
 
-  const positivePrompt = useMemo(() => toPrompt(positiveParts), [positiveParts])
-  const negativePrompt = useMemo(() => toPrompt(negativeParts), [negativeParts])
-
   const categoryNameById = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
-  const categoryOptions = useMemo(() => categories.map((c) => c.name), [categories])
+  const categoryByName = useMemo(() => {
+    const map = new Map<string, Category>()
+    categories.forEach((c) => map.set(c.name, c))
+    return map
+  }, [categories])
+
+  const orderParts = (parts: ComposerItem[]) => {
+    return [...parts].sort((a, b) => {
+      const imp = Number(Boolean(b.isImportant)) - Number(Boolean(a.isImportant))
+      if (imp !== 0) return imp
+      const aOrder = a.category ? (categoryByName.get(a.category)?.sort_order ?? 9999) : 9999
+      const bOrder = b.category ? (categoryByName.get(b.category)?.sort_order ?? 9999) : 9999
+      if (aOrder !== bOrder) return aOrder - bOrder
+      return a.text.localeCompare(b.text)
+    })
+  }
 
   const requiredLoras = useMemo(() => {
     const vals = [...positiveParts, ...negativeParts]
@@ -158,7 +166,7 @@ function App() {
 
   const groupedPositive = useMemo(() => {
     const map = new Map<string, ComposerItem[]>()
-    const ordered = [...positiveParts].sort((a, b) => Number(Boolean(b.isImportant)) - Number(Boolean(a.isImportant)))
+    const ordered = orderParts(positiveParts)
     for (const part of ordered) {
       const key = part.isRecurring ? 'Quality / Recurring' : part.category || 'Uncategorized'
       const curr = map.get(key) || []
@@ -166,7 +174,19 @@ function App() {
       map.set(key, curr)
     }
     return [...map.entries()]
-  }, [positiveParts])
+  }, [positiveParts, categories])
+
+  const groupedNegative = useMemo(() => {
+    const map = new Map<string, ComposerItem[]>()
+    const ordered = orderParts(negativeParts)
+    for (const part of ordered) {
+      const key = part.category || 'Uncategorized'
+      const curr = map.get(key) || []
+      curr.push(part)
+      map.set(key, curr)
+    }
+    return [...map.entries()]
+  }, [negativeParts, categories])
 
   const promptHealth = useMemo(() => {
     const issues: string[] = []
@@ -195,6 +215,12 @@ function App() {
   }, [positiveParts, negativeParts, requiredLoras.length])
 
   const categoryPhrases = useMemo(() => phrases.filter((p) => p.category_id === selectedCategoryId), [phrases, selectedCategoryId])
+
+  const sortedPositiveParts = useMemo(() => orderParts(positiveParts), [positiveParts, categories])
+  const sortedNegativeParts = useMemo(() => orderParts(negativeParts), [negativeParts, categories])
+
+  const positivePrompt = useMemo(() => toPrompt(sortedPositiveParts), [sortedPositiveParts])
+  const negativePrompt = useMemo(() => toPrompt(sortedNegativeParts), [sortedNegativeParts])
 
   async function loadAll() {
     setLoading(true)
@@ -257,7 +283,7 @@ function App() {
         category_id: selectedCategoryId,
         text: newPhraseText.trim(),
         default_weight: newPhraseWeight.trim() ? Number(newPhraseWeight) : null,
-        is_negative_default: newPhraseNegativeDefault,
+        is_negative_default: false,
         notes: newPhraseNotes.trim() || null,
         required_lora: newPhraseRequiredLora.trim() || null,
         sort_order: categoryPhrases.length,
@@ -265,7 +291,6 @@ function App() {
     })
     setNewPhraseText('')
     setNewPhraseWeight('')
-    setNewPhraseNegativeDefault(false)
     setNewPhraseNotes('')
     setNewPhraseRequiredLora('')
     await loadAll()
@@ -276,7 +301,15 @@ function App() {
     await loadAll()
   }
 
-  function addPhraseToComposer(phrase: Phrase) {
+  async function changePhraseCategory(phrase: Phrase, categoryId: number) {
+    await api(`/phrases/${phrase.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ category_id: categoryId }),
+    })
+    await loadAll()
+  }
+
+  function addPhraseToComposer(phrase: Phrase, target: 'positive' | 'negative') {
     const categoryName = categoryNameById.get(phrase.category_id)
     const item: ComposerItem = {
       id: `${phrase.id}-${Date.now()}-${Math.random()}`,
@@ -287,7 +320,7 @@ function App() {
       isRecurring: categoryName?.toLowerCase().includes('quality') ?? false,
       requiredLora: phrase.required_lora ?? undefined,
     }
-    if (phrase.is_negative_default) setNegativeParts((curr) => [...curr, item])
+    if (target === 'negative') setNegativeParts((curr) => [...curr, item])
     else setPositiveParts((curr) => [...curr, item])
   }
 
@@ -465,10 +498,7 @@ function App() {
             <Panel title={`Phrases ${selectedCategoryId ? '' : '(select category)'}`}>
               <form onSubmit={createPhrase} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
                 <input style={inputStyle} value={newPhraseText} onChange={(e) => setNewPhraseText(e.target.value)} placeholder="Phrase text" />
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input style={inputStyle} value={newPhraseWeight} onChange={(e) => setNewPhraseWeight(e.target.value)} placeholder="weight" type="number" step="0.1" />
-                  <label><input type="checkbox" checked={newPhraseNegativeDefault} onChange={(e) => setNewPhraseNegativeDefault(e.target.checked)} /> negative</label>
-                </div>
+                <input style={inputStyle} value={newPhraseWeight} onChange={(e) => setNewPhraseWeight(e.target.value)} placeholder="default weight (optional)" type="number" step="0.1" />
                 <input style={inputStyle} value={newPhraseNotes} onChange={(e) => setNewPhraseNotes(e.target.value)} placeholder="notes" />
                 <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder="required LoRA" />
                 <button style={btnStyle} type="submit" disabled={!selectedCategoryId}>Add phrase</button>
@@ -479,8 +509,22 @@ function App() {
                     <strong>{p.text}</strong>
                     {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
                     {p.required_lora && <span style={{ color: ui.ok }}>LoRA: {p.required_lora}</span>}
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p)}>Add</button>
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'positive')}>+ Positive</button>
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>+ Negative</button>
                     <button style={btnGhostStyle} onClick={() => removePhrase(p.id)}>Delete</button>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <select
+                      style={inputStyle}
+                      value={p.category_id}
+                      onChange={(e) => void changePhraseCategory(p, Number(e.target.value))}
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               ))}
@@ -490,9 +534,38 @@ function App() {
 
         {activeTab === 'composer' && (
           <>
+            <Panel title="Phrase picker">
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ color: ui.muted }}>Category:</span>
+                <select
+                  style={inputStyle}
+                  value={selectedCategoryId ?? ''}
+                  onChange={(e) => setSelectedCategoryId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {categoryPhrases.map((p) => (
+                  <div key={`picker-${p.id}`} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <strong>{p.text}</strong>
+                    {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
+                    {p.required_lora && <span style={{ color: ui.ok }}>LoRA: {p.required_lora}</span>}
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'positive')}>+ Positive</button>
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>+ Negative</button>
+                  </div>
+                ))}
+                {categoryPhrases.length === 0 && <span style={{ color: ui.muted }}>No phrases in selected category.</span>}
+              </div>
+            </Panel>
+
             <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-              <ComposerList title="Positive" items={positiveParts} setItems={setPositiveParts} categoryOptions={categoryOptions} updatePart={updatePart} movePart={movePart} removePart={removePart} />
-              <ComposerList title="Negative" items={negativeParts} setItems={setNegativeParts} categoryOptions={categoryOptions} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+              <ComposerList title="Positive" items={positiveParts} setItems={setPositiveParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+              <ComposerList title="Negative" items={negativeParts} setItems={setNegativeParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
             </section>
 
             <Panel title="Prompt Inspector">
@@ -515,6 +588,17 @@ function App() {
                   <ul>{items.map((i) => <li key={i.id}>{i.text}{i.weight !== undefined ? ` (${i.weight})` : ''}{i.isImportant ? ' [important]' : ''}</li>)}</ul>
                 </div>
               ))}
+              {groupedNegative.length > 0 && (
+                <>
+                  <h4 style={{ marginBottom: 6 }}>Negative groups</h4>
+                  {groupedNegative.map(([group, items]) => (
+                    <div key={`neg-${group}`} style={{ marginBottom: 10 }}>
+                      <strong>{group}</strong>
+                      <ul>{items.map((i) => <li key={i.id}>{i.text}{i.weight !== undefined ? ` (${i.weight})` : ''}</li>)}</ul>
+                    </div>
+                  ))}
+                </>
+              )}
             </Panel>
 
             <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -605,7 +689,6 @@ function ComposerList({
   title,
   items,
   setItems,
-  categoryOptions,
   updatePart,
   movePart,
   removePart,
@@ -613,7 +696,6 @@ function ComposerList({
   title: string
   items: ComposerItem[]
   setItems: React.Dispatch<React.SetStateAction<ComposerItem[]>>
-  categoryOptions: string[]
   updatePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number, patch: Partial<ComposerItem>) => void
   movePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number, dir: -1 | 1) => void
   removePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number) => void
@@ -632,11 +714,8 @@ function ComposerList({
               <button style={btnGhostStyle} onClick={() => removePart(setItems, idx)}>✕</button>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, marginBottom: 8 }}>
-            <select style={inputStyle} value={item.category ?? ''} onChange={(e) => updatePart(setItems, idx, { category: e.target.value || undefined })}>
-              <option value="">No category</option>
-              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+            <span style={{ color: ui.muted }}>Category: {item.category || 'Uncategorized'}</span>
             <label><input type="checkbox" checked={Boolean(item.isImportant)} onChange={(e) => updatePart(setItems, idx, { isImportant: e.target.checked })} /> important</label>
             <label><input type="checkbox" checked={Boolean(item.isRecurring)} onChange={(e) => updatePart(setItems, idx, { isRecurring: e.target.checked })} /> recurring</label>
           </div>
