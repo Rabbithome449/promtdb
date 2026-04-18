@@ -222,6 +222,7 @@ function App() {
 
   const positivePrompt = useMemo(() => toPrompt(sortedPositiveParts), [sortedPositiveParts])
   const negativePrompt = useMemo(() => toPrompt(sortedNegativeParts), [sortedNegativeParts])
+  const effectivePhraseCategoryId = newPhraseCategoryId ?? selectedCategoryId ?? categories[0]?.id ?? null
 
   async function loadAll() {
     setLoading(true)
@@ -256,6 +257,12 @@ function App() {
     }
   }, [selectedCategoryId, newPhraseCategoryId])
 
+  useEffect(() => {
+    if (categories.length === 0) return
+    if (selectedCategoryId === null) setSelectedCategoryId(categories[0].id)
+    if (newPhraseCategoryId === null) setNewPhraseCategoryId(categories[0].id)
+  }, [categories, selectedCategoryId, newPhraseCategoryId])
+
   async function createCategory(e: React.FormEvent) {
     e.preventDefault()
     if (!newCategoryName.trim()) return
@@ -283,11 +290,11 @@ function App() {
 
   async function createPhrase(e: React.FormEvent) {
     e.preventDefault()
-    if (!newPhraseCategoryId || !newPhraseText.trim()) return
+    if (!effectivePhraseCategoryId || !newPhraseText.trim()) return
     await api<Phrase>('/phrases', {
       method: 'POST',
       body: JSON.stringify({
-        category_id: newPhraseCategoryId,
+        category_id: effectivePhraseCategoryId,
         text: newPhraseText.trim(),
         default_weight: newPhraseWeight.trim() ? Number(newPhraseWeight) : null,
         is_negative_default: false,
@@ -507,7 +514,7 @@ function App() {
               <form onSubmit={createPhrase} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
                 <select
                   style={inputStyle}
-                  value={newPhraseCategoryId ?? ''}
+                  value={effectivePhraseCategoryId ?? ''}
                   onChange={(e) => setNewPhraseCategoryId(e.target.value ? Number(e.target.value) : null)}
                 >
                   <option value="" disabled>
@@ -523,7 +530,7 @@ function App() {
                 <input style={inputStyle} value={newPhraseWeight} onChange={(e) => setNewPhraseWeight(e.target.value)} placeholder="default weight (optional)" type="number" step="0.1" />
                 <input style={inputStyle} value={newPhraseNotes} onChange={(e) => setNewPhraseNotes(e.target.value)} placeholder="notes" />
                 <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder="required LoRA" />
-                <button style={btnStyle} type="submit" disabled={!newPhraseCategoryId}>Add phrase</button>
+                <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId}>Add phrase</button>
               </form>
               {categoryPhrases.map((p) => (
                 <div key={p.id} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
