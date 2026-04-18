@@ -124,6 +124,7 @@ function App() {
 
   const [newCategoryName, setNewCategoryName] = useState('')
   const [newPhraseText, setNewPhraseText] = useState('')
+  const [newPhraseCategoryId, setNewPhraseCategoryId] = useState<number | null>(null)
   const [newPhraseWeight, setNewPhraseWeight] = useState('')
   const [newPhraseNotes, setNewPhraseNotes] = useState('')
   const [newPhraseRequiredLora, setNewPhraseRequiredLora] = useState('')
@@ -249,6 +250,12 @@ function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (newPhraseCategoryId === null && selectedCategoryId !== null) {
+      setNewPhraseCategoryId(selectedCategoryId)
+    }
+  }, [selectedCategoryId, newPhraseCategoryId])
+
   async function createCategory(e: React.FormEvent) {
     e.preventDefault()
     if (!newCategoryName.trim()) return
@@ -276,11 +283,11 @@ function App() {
 
   async function createPhrase(e: React.FormEvent) {
     e.preventDefault()
-    if (!selectedCategoryId || !newPhraseText.trim()) return
+    if (!newPhraseCategoryId || !newPhraseText.trim()) return
     await api<Phrase>('/phrases', {
       method: 'POST',
       body: JSON.stringify({
-        category_id: selectedCategoryId,
+        category_id: newPhraseCategoryId,
         text: newPhraseText.trim(),
         default_weight: newPhraseWeight.trim() ? Number(newPhraseWeight) : null,
         is_negative_default: false,
@@ -306,6 +313,7 @@ function App() {
       method: 'PATCH',
       body: JSON.stringify({ category_id: categoryId }),
     })
+    setSelectedCategoryId(categoryId)
     await loadAll()
   }
 
@@ -497,11 +505,25 @@ function App() {
 
             <Panel title={`Phrases ${selectedCategoryId ? '' : '(select category)'}`}>
               <form onSubmit={createPhrase} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+                <select
+                  style={inputStyle}
+                  value={newPhraseCategoryId ?? ''}
+                  onChange={(e) => setNewPhraseCategoryId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="" disabled>
+                    Select category
+                  </option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
                 <input style={inputStyle} value={newPhraseText} onChange={(e) => setNewPhraseText(e.target.value)} placeholder="Phrase text" />
                 <input style={inputStyle} value={newPhraseWeight} onChange={(e) => setNewPhraseWeight(e.target.value)} placeholder="default weight (optional)" type="number" step="0.1" />
                 <input style={inputStyle} value={newPhraseNotes} onChange={(e) => setNewPhraseNotes(e.target.value)} placeholder="notes" />
                 <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder="required LoRA" />
-                <button style={btnStyle} type="submit" disabled={!selectedCategoryId}>Add phrase</button>
+                <button style={btnStyle} type="submit" disabled={!newPhraseCategoryId}>Add phrase</button>
               </form>
               {categoryPhrases.map((p) => (
                 <div key={p.id} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
