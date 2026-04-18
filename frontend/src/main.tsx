@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
+type TabKey = 'dashboard' | 'library' | 'composer' | 'characters'
+
 type Category = {
   id: number
   name: string
@@ -76,6 +78,22 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
+function normalizeText(text: string) {
+  return text.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function dedupeParts(parts: ComposerItem[]) {
+  const seen = new Set<string>()
+  const next: ComposerItem[] = []
+  for (const part of parts) {
+    const key = normalizeText(part.text)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    next.push({ ...part, text: part.text.trim() })
+  }
+  return next
+}
+
 function toPrompt(parts: ComposerItem[]) {
   return [...parts]
     .sort((a, b) => Number(Boolean(b.isImportant)) - Number(Boolean(a.isImportant)))
@@ -83,7 +101,20 @@ function toPrompt(parts: ComposerItem[]) {
     .join(', ')
 }
 
+const ui = {
+  bg: '#0b1220',
+  panel: '#131c2e',
+  panel2: '#1a253d',
+  text: '#e7edf7',
+  muted: '#9fb0cc',
+  border: '#2b3a58',
+  accent: '#5ea2ff',
+  ok: '#52c98c',
+  warn: '#f5c26b',
+}
+
 function App() {
+  const [activeTab, setActiveTab] = useState<TabKey>('dashboard')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -115,10 +146,7 @@ function App() {
   const positivePrompt = useMemo(() => toPrompt(positiveParts), [positiveParts])
   const negativePrompt = useMemo(() => toPrompt(negativeParts), [negativeParts])
 
-  const categoryNameById = useMemo(
-    () => new Map(categories.map((c) => [c.id, c.name])),
-    [categories],
-  )
+  const categoryNameById = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
   const categoryOptions = useMemo(() => categories.map((c) => c.name), [categories])
 
   const requiredLoras = useMemo(() => {
@@ -140,6 +168,34 @@ function App() {
     return [...map.entries()]
   }, [positiveParts])
 
+  const promptHealth = useMemo(() => {
+    const issues: string[] = []
+    const positiveKeys = new Set(positiveParts.map((p) => normalizeText(p.text)).filter(Boolean))
+    const negativeKeys = new Set(negativeParts.map((p) => normalizeText(p.text)).filter(Boolean))
+    const duplicatePositiveCount = positiveParts.length - positiveKeys.size
+    const duplicateNegativeCount = negativeParts.length - negativeKeys.size
+
+    if (positiveParts.length === 0) issues.push('No positive parts selected yet.')
+    if (duplicatePositiveCount > 0) issues.push(`Positive has ${duplicatePositiveCount} duplicate entries.`)
+    if (duplicateNegativeCount > 0) issues.push(`Negative has ${duplicateNegativeCount} duplicate entries.`)
+
+    let crossConflictCount = 0
+    for (const key of positiveKeys) {
+      if (negativeKeys.has(key)) crossConflictCount += 1
+    }
+    if (crossConflictCount > 0) issues.push(`${crossConflictCount} terms appear in both positive and negative.`)
+
+    const importantCount = positiveParts.filter((p) => p.isImportant).length
+    if (importantCount === 0 && positiveParts.length > 0) issues.push('No important/core part is marked.')
+
+    if (requiredLoras.length === 0 && positiveParts.length > 0) issues.push('No required LoRA detected.')
+
+    const score = Math.max(0, 100 - issues.length * 12)
+    return { score, issues }
+  }, [positiveParts, negativeParts, requiredLoras.length])
+
+  const categoryPhrases = useMemo(() => phrases.filter((p) => p.category_id === selectedCategoryId), [phrases, selectedCategoryId])
+
   async function loadAll() {
     setLoading(true)
     setError(null)
@@ -154,9 +210,7 @@ function App() {
       setPhrases(p)
       setPresets(pr)
       setCharacters(ch)
-      if (selectedCategoryId === null && c.length > 0) {
-        setSelectedCategoryId(c[0].id)
-      }
+      if (selectedCategoryId === null && c.length > 0) setSelectedCategoryId(c[0].id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error')
     } finally {
@@ -166,13 +220,8 @@ function App() {
 
   useEffect(() => {
     void loadAll()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const categoryPhrases = useMemo(
-    () => phrases.filter((p) => p.category_id === selectedCategoryId),
-    [phrases, selectedCategoryId],
-  )
 
   async function createCategory(e: React.FormEvent) {
     e.preventDefault()
@@ -188,10 +237,7 @@ function App() {
   async function renameCategory(id: number, current: string) {
     const name = window.prompt('New category name', current)
     if (!name?.trim()) return
-    await api(`/categories/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ name: name.trim() }),
-    })
+    await api(`/categories/${id}`, { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) })
     await loadAll()
   }
 
@@ -241,18 +287,11 @@ function App() {
       isRecurring: categoryName?.toLowerCase().includes('quality') ?? false,
       requiredLora: phrase.required_lora ?? undefined,
     }
-    if (phrase.is_negative_default) {
-      setNegativeParts((curr) => [...curr, item])
-    } else {
-      setPositiveParts((curr) => [...curr, item])
-    }
+    if (phrase.is_negative_default) setNegativeParts((curr) => [...curr, item])
+    else setPositiveParts((curr) => [...curr, item])
   }
 
-  function updatePart(
-    setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>,
-    idx: number,
-    patch: Partial<ComposerItem>,
-  ) {
+  function updatePart(setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number, patch: Partial<ComposerItem>) {
     setter((curr) => curr.map((p, i) => (i === idx ? { ...p, ...patch } : p)))
   }
 
@@ -282,22 +321,8 @@ function App() {
       method: 'POST',
       body: JSON.stringify({
         name: presetName.trim(),
-        positive_parts: positiveParts.map((p) => ({
-          text: p.text,
-          weight: p.weight,
-          category: p.category,
-          is_important: p.isImportant,
-          is_recurring: p.isRecurring,
-          required_lora: p.requiredLora,
-        })),
-        negative_parts: negativeParts.map((p) => ({
-          text: p.text,
-          weight: p.weight,
-          category: p.category,
-          is_important: p.isImportant,
-          is_recurring: p.isRecurring,
-          required_lora: p.requiredLora,
-        })),
+        positive_parts: positiveParts.map((p) => ({ text: p.text, weight: p.weight, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
+        negative_parts: negativeParts.map((p) => ({ text: p.text, weight: p.weight, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
       }),
     })
     setPresetName('')
@@ -305,28 +330,8 @@ function App() {
   }
 
   function loadPreset(preset: Preset) {
-    setPositiveParts(
-      preset.positive_parts.map((p, i) => ({
-        id: `pp-${preset.id}-${i}-${Date.now()}`,
-        text: p.text,
-        weight: p.weight,
-        category: p.category,
-        isImportant: p.is_important,
-        isRecurring: p.is_recurring,
-        requiredLora: p.required_lora,
-      })),
-    )
-    setNegativeParts(
-      preset.negative_parts.map((p, i) => ({
-        id: `np-${preset.id}-${i}-${Date.now()}`,
-        text: p.text,
-        weight: p.weight,
-        category: p.category,
-        isImportant: p.is_important,
-        isRecurring: p.is_recurring,
-        requiredLora: p.required_lora,
-      })),
-    )
+    setPositiveParts(preset.positive_parts.map((p, i) => ({ id: `pp-${preset.id}-${i}-${Date.now()}`, text: p.text, weight: p.weight, category: p.category, isImportant: p.is_important, isRecurring: p.is_recurring, requiredLora: p.required_lora })))
+    setNegativeParts(preset.negative_parts.map((p, i) => ({ id: `np-${preset.id}-${i}-${Date.now()}`, text: p.text, weight: p.weight, category: p.category, isImportant: p.is_important, isRecurring: p.is_recurring, requiredLora: p.required_lora })))
   }
 
   async function deletePreset(id: number) {
@@ -349,22 +354,8 @@ function App() {
         recommended_sdxl_base_model: characterRecommendedSdxlBaseModel.trim() || null,
         positive_prompt: positivePrompt,
         negative_prompt: negativePrompt,
-        positive_parts: positiveParts.map((p) => ({
-          text: p.text,
-          weight: p.weight,
-          category: p.category,
-          is_important: p.isImportant,
-          is_recurring: p.isRecurring,
-          required_lora: p.requiredLora,
-        })),
-        negative_parts: negativeParts.map((p) => ({
-          text: p.text,
-          weight: p.weight,
-          category: p.category,
-          is_important: p.isImportant,
-          is_recurring: p.isRecurring,
-          required_lora: p.requiredLora,
-        })),
+        positive_parts: positiveParts.map((p) => ({ text: p.text, weight: p.weight, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
+        negative_parts: negativeParts.map((p) => ({ text: p.text, weight: p.weight, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
         required_loras: requiredLoras,
       }),
     })
@@ -378,28 +369,8 @@ function App() {
   }
 
   function loadCharacter(character: CharacterPreset) {
-    setPositiveParts(
-      character.positive_parts.map((p, i) => ({
-        id: `cp-${character.id}-${i}-${Date.now()}`,
-        text: p.text,
-        weight: p.weight,
-        category: p.category,
-        isImportant: p.is_important,
-        isRecurring: p.is_recurring,
-        requiredLora: p.required_lora,
-      })),
-    )
-    setNegativeParts(
-      character.negative_parts.map((p, i) => ({
-        id: `cn-${character.id}-${i}-${Date.now()}`,
-        text: p.text,
-        weight: p.weight,
-        category: p.category,
-        isImportant: p.is_important,
-        isRecurring: p.is_recurring,
-        requiredLora: p.required_lora,
-      })),
-    )
+    setPositiveParts(character.positive_parts.map((p, i) => ({ id: `cp-${character.id}-${i}-${Date.now()}`, text: p.text, weight: p.weight, category: p.category, isImportant: p.is_important, isRecurring: p.is_recurring, requiredLora: p.required_lora })))
+    setNegativeParts(character.negative_parts.map((p, i) => ({ id: `cn-${character.id}-${i}-${Date.now()}`, text: p.text, weight: p.weight, category: p.category, isImportant: p.is_important, isRecurring: p.is_recurring, requiredLora: p.required_lora })))
   }
 
   async function deleteCharacter(id: number) {
@@ -413,223 +384,220 @@ function App() {
     await loadAll()
   }
 
+  function smartCleanupPrompt() {
+    setPositiveParts((curr) => {
+      const cleaned = dedupeParts(curr)
+      return cleaned.map((p, idx) => ({ ...p, isImportant: p.isImportant ?? idx === 0, isRecurring: p.isRecurring ?? /quality|detail|masterpiece|highres/i.test(p.text) }))
+    })
+    setNegativeParts((curr) => dedupeParts(curr))
+  }
+
+  function addCinematicStarterPack() {
+    const pack: ComposerItem[] = [
+      { id: `auto-cine-${Date.now()}-1`, text: 'cinematic lighting', isRecurring: true, category: 'Lighting' },
+      { id: `auto-cine-${Date.now()}-2`, text: 'highly detailed', isRecurring: true, category: 'Quality' },
+      { id: `auto-cine-${Date.now()}-3`, text: 'sharp focus', isRecurring: true, category: 'Quality' },
+    ]
+    setPositiveParts((curr) => dedupeParts([...curr, ...pack]))
+  }
+
   return (
-    <main style={{ fontFamily: 'Inter, system-ui, sans-serif', padding: 20, maxWidth: 1200, margin: '0 auto' }}>
-      <h1 style={{ marginTop: 0 }}>promtdb MVP</h1>
-      {loading && <p>Loading...</p>}
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+    <main style={{ background: ui.bg, minHeight: '100vh', color: ui.text, fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: 20 }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h1 style={{ margin: 0 }}>promtdb</h1>
+          <span style={{ color: ui.muted }}>{loading ? 'syncing...' : 'ready'}</span>
+        </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-        <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12 }}>
-          <h2>Categories</h2>
-          <form onSubmit={createCategory} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <input value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="New category" />
-            <button type="submit">Add</button>
-          </form>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {categories.map((c) => (
-              <li key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <button onClick={() => setSelectedCategoryId(c.id)} style={{ fontWeight: selectedCategoryId === c.id ? 700 : 400 }}>
-                  {c.name}
-                </button>
-                <button onClick={() => renameCategory(c.id, c.name)}>Rename</button>
-                <button onClick={() => removeCategory(c.id)}>Delete</button>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <nav style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          {[
+            ['dashboard', 'Dashboard'],
+            ['library', 'Library'],
+            ['composer', 'Composer'],
+            ['characters', 'Characters'],
+          ].map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setActiveTab(k as TabKey)}
+              style={{
+                background: activeTab === k ? ui.accent : ui.panel,
+                color: ui.text,
+                border: `1px solid ${ui.border}`,
+                borderRadius: 10,
+                padding: '8px 14px',
+                cursor: 'pointer',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
 
-        <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12 }}>
-          <h2>Phrases {selectedCategoryId ? '' : '(select category)'}</h2>
-          <form onSubmit={createPhrase} style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
-            <input value={newPhraseText} onChange={(e) => setNewPhraseText(e.target.value)} placeholder="Phrase text" />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                value={newPhraseWeight}
-                onChange={(e) => setNewPhraseWeight(e.target.value)}
-                placeholder="Default weight (optional)"
-                type="number"
-                step="0.1"
-              />
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <input
-                  type="checkbox"
-                  checked={newPhraseNegativeDefault}
-                  onChange={(e) => setNewPhraseNegativeDefault(e.target.checked)}
-                />
-                Negative default
-              </label>
-            </div>
-            <input value={newPhraseNotes} onChange={(e) => setNewPhraseNotes(e.target.value)} placeholder="Notes (optional)" />
-            <input
-              value={newPhraseRequiredLora}
-              onChange={(e) => setNewPhraseRequiredLora(e.target.value)}
-              placeholder="Required LoRA (optional), e.g. character_v3"
-            />
-            <button type="submit" disabled={!selectedCategoryId}>Add phrase</button>
-          </form>
+        {error && <p style={{ color: '#ff8f8f' }}>{error}</p>}
 
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: 320, overflow: 'auto' }}>
-            {categoryPhrases.map((p) => (
-              <li key={p.id} style={{ borderTop: '1px solid #eee', padding: '8px 0' }}>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <strong>{p.text}</strong>
-                  {p.default_weight !== null && <span>({p.default_weight})</span>}
-                  {p.is_negative_default && <span style={{ color: '#8a2be2' }}>negative</span>}
-                  {p.required_lora && <span style={{ color: '#006400' }}>LoRA: {p.required_lora}</span>}
-                  <button onClick={() => addPhraseToComposer(p)}>Add to composer</button>
-                  <button onClick={() => removePhrase(p.id)}>Delete</button>
+        {activeTab === 'dashboard' && (
+          <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
+            <StatCard title="Categories" value={String(categories.length)} />
+            <StatCard title="Phrases" value={String(phrases.length)} />
+            <StatCard title="Presets" value={String(presets.length)} />
+            <StatCard title="Characters" value={String(characters.length)} />
+            <StatCard title="Prompt Quality" value={`${promptHealth.score}/100`} highlight />
+            <StatCard title="Required LoRAs" value={requiredLoras.length ? requiredLoras.join(', ') : 'none'} />
+          </section>
+        )}
+
+        {activeTab === 'library' && (
+          <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Panel title="Categories">
+              <form onSubmit={createCategory} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                <input style={inputStyle} value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="New category" />
+                <button style={btnStyle} type="submit">Add</button>
+              </form>
+              {categories.map((c) => (
+                <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <button style={btnStyle} onClick={() => setSelectedCategoryId(c.id)}>{c.name}</button>
+                  <button style={btnGhostStyle} onClick={() => renameCategory(c.id, c.name)}>Rename</button>
+                  <button style={btnGhostStyle} onClick={() => removeCategory(c.id)}>Delete</button>
                 </div>
-                {p.notes && <small>{p.notes}</small>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
+              ))}
+            </Panel>
 
-      <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 20 }}>
-        <h2>Composer</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <ComposerList
-            title="Positive"
-            items={positiveParts}
-            setItems={setPositiveParts}
-            categoryOptions={categoryOptions}
-            updatePart={updatePart}
-            movePart={movePart}
-            removePart={removePart}
-          />
-          <ComposerList
-            title="Negative"
-            items={negativeParts}
-            setItems={setNegativeParts}
-            categoryOptions={categoryOptions}
-            updatePart={updatePart}
-            movePart={movePart}
-            removePart={removePart}
-          />
-        </div>
+            <Panel title={`Phrases ${selectedCategoryId ? '' : '(select category)'}`}>
+              <form onSubmit={createPhrase} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+                <input style={inputStyle} value={newPhraseText} onChange={(e) => setNewPhraseText(e.target.value)} placeholder="Phrase text" />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input style={inputStyle} value={newPhraseWeight} onChange={(e) => setNewPhraseWeight(e.target.value)} placeholder="weight" type="number" step="0.1" />
+                  <label><input type="checkbox" checked={newPhraseNegativeDefault} onChange={(e) => setNewPhraseNegativeDefault(e.target.checked)} /> negative</label>
+                </div>
+                <input style={inputStyle} value={newPhraseNotes} onChange={(e) => setNewPhraseNotes(e.target.value)} placeholder="notes" />
+                <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder="required LoRA" />
+                <button style={btnStyle} type="submit" disabled={!selectedCategoryId}>Add phrase</button>
+              </form>
+              {categoryPhrases.map((p) => (
+                <div key={p.id} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <strong>{p.text}</strong>
+                    {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
+                    {p.required_lora && <span style={{ color: ui.ok }}>LoRA: {p.required_lora}</span>}
+                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p)}>Add</button>
+                    <button style={btnGhostStyle} onClick={() => removePhrase(p.id)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </Panel>
+          </section>
+        )}
 
-        <div style={{ marginTop: 12, border: '1px solid #eee', borderRadius: 8, padding: 10 }}>
-          <h3 style={{ marginTop: 0 }}>Structured view (human readable)</h3>
-          {groupedPositive.length === 0 && <p style={{ opacity: 0.7 }}>No positive blocks yet.</p>}
-          {groupedPositive.map(([group, items]) => (
-            <div key={group} style={{ marginBottom: 8 }}>
-              <strong>{group}</strong>
-              <ul style={{ margin: '6px 0 0 16px' }}>
-                {items.map((i) => (
-                  <li key={i.id}>
-                    {i.text}
-                    {i.weight !== undefined ? ` (${i.weight})` : ''}
-                    {i.isImportant ? ' [important]' : ''}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-          {requiredLoras.length > 0 && (
-            <p style={{ marginBottom: 0 }}>
-              <strong>Required LoRAs:</strong> {requiredLoras.join(', ')}
-            </p>
-          )}
-        </div>
+        {activeTab === 'composer' && (
+          <>
+            <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <ComposerList title="Positive" items={positiveParts} setItems={setPositiveParts} categoryOptions={categoryOptions} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+              <ComposerList title="Negative" items={negativeParts} setItems={setNegativeParts} categoryOptions={categoryOptions} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+            </section>
 
-        <div style={{ marginTop: 12 }}>
-          <label>Positive prompt</label>
-          <textarea readOnly value={positivePrompt} rows={3} style={{ width: '100%' }} />
-          <button onClick={() => void copyText(positivePrompt)}>Copy positive</button>
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <label>Negative prompt</label>
-          <textarea readOnly value={negativePrompt} rows={3} style={{ width: '100%' }} />
-          <button onClick={() => void copyText(negativePrompt)}>Copy negative</button>
-        </div>
-      </section>
-
-      <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 20 }}>
-        <h2>Presets</h2>
-        <form onSubmit={savePreset} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-          <input value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="Preset name" />
-          <button type="submit">Save current composer as preset</button>
-        </form>
-
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {presets.map((preset) => (
-            <li key={preset.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <strong>{preset.name}</strong>
-              <button onClick={() => loadPreset(preset)}>Load</button>
-              <button onClick={() => void deletePreset(preset.id)}>Delete</button>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 20 }}>
-        <h2>Character presets (full prompt)</h2>
-        <form onSubmit={saveCharacter} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
-          <input
-            value={characterName}
-            onChange={(e) => setCharacterName(e.target.value)}
-            placeholder="Character name (e.g. cyberpunk_anna_v1)"
-          />
-          <input
-            value={characterDescription}
-            onChange={(e) => setCharacterDescription(e.target.value)}
-            placeholder="Description (optional)"
-          />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
-            <input
-              value={characterVersionFamily}
-              onChange={(e) => setCharacterVersionFamily(e.target.value)}
-              placeholder="Version family (optional, e.g. anna_cyberpunk)"
-            />
-            <input
-              value={characterVersion}
-              onChange={(e) => setCharacterVersion(e.target.value)}
-              type="number"
-              min={1}
-              placeholder="Version"
-            />
-          </div>
-          <input
-            value={characterRequiredSdxlBaseModel}
-            onChange={(e) => setCharacterRequiredSdxlBaseModel(e.target.value)}
-            placeholder="Required SDXL base model (optional)"
-          />
-          <input
-            value={characterRecommendedSdxlBaseModel}
-            onChange={(e) => setCharacterRecommendedSdxlBaseModel(e.target.value)}
-            placeholder="Recommended SDXL base model (optional)"
-          />
-          <button type="submit">Save current full prompt as character</button>
-        </form>
-
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {characters.map((character) => (
-            <li key={character.id} style={{ borderTop: '1px solid #eee', padding: '8px 0' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <strong>{character.name}</strong>
-                <span style={{ color: '#555' }}>family: {character.version_family || 'n/a'}</span>
-                <span style={{ color: '#555' }}>v{character.version}</span>
-                {character.required_sdxl_base_model && (
-                  <span style={{ color: '#b22222' }}>Required SDXL: {character.required_sdxl_base_model}</span>
-                )}
-                {character.recommended_sdxl_base_model && (
-                  <span style={{ color: '#1e40af' }}>Recommended SDXL: {character.recommended_sdxl_base_model}</span>
-                )}
-                {character.required_loras.length > 0 && (
-                  <span style={{ color: '#006400' }}>LoRAs: {character.required_loras.join(', ')}</span>
-                )}
-                <button onClick={() => loadCharacter(character)}>Load</button>
-                <button onClick={() => void duplicateCharacterVersion(character.id)}>Duplicate as next version</button>
-                <button onClick={() => void deleteCharacter(character.id)}>Delete</button>
+            <Panel title="Prompt Inspector">
+              <p style={{ marginTop: 0 }}>Quality score: <strong>{promptHealth.score}/100</strong></p>
+              {promptHealth.issues.length ? (
+                <ul>{promptHealth.issues.map((i) => <li key={i}>{i}</li>)}</ul>
+              ) : (
+                <p style={{ color: ui.ok }}>Looks clean and ready.</p>
+              )}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button style={btnStyle} onClick={smartCleanupPrompt}>Auto-clean</button>
+                <button style={btnStyle} onClick={addCinematicStarterPack}>Add cinematic starter pack</button>
               </div>
-              {character.description && <small>{character.description}</small>}
-            </li>
-          ))}
-        </ul>
-      </section>
+            </Panel>
+
+            <Panel title="Structured view">
+              {groupedPositive.map(([group, items]) => (
+                <div key={group} style={{ marginBottom: 10 }}>
+                  <strong>{group}</strong>
+                  <ul>{items.map((i) => <li key={i.id}>{i.text}{i.weight !== undefined ? ` (${i.weight})` : ''}{i.isImportant ? ' [important]' : ''}</li>)}</ul>
+                </div>
+              ))}
+            </Panel>
+
+            <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Panel title="Positive prompt">
+                <textarea readOnly value={positivePrompt} rows={4} style={textareaStyle} />
+                <button style={btnStyle} onClick={() => void copyText(positivePrompt)}>Copy</button>
+              </Panel>
+              <Panel title="Negative prompt">
+                <textarea readOnly value={negativePrompt} rows={4} style={textareaStyle} />
+                <button style={btnStyle} onClick={() => void copyText(negativePrompt)}>Copy</button>
+              </Panel>
+            </section>
+
+            <Panel title="Composer Presets">
+              <form onSubmit={savePreset} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                <input style={inputStyle} value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="Preset name" />
+                <button style={btnStyle} type="submit">Save</button>
+              </form>
+              {presets.map((preset) => (
+                <div key={preset.id} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                  <strong>{preset.name}</strong>
+                  <button style={btnGhostStyle} onClick={() => loadPreset(preset)}>Load</button>
+                  <button style={btnGhostStyle} onClick={() => void deletePreset(preset.id)}>Delete</button>
+                </div>
+              ))}
+            </Panel>
+          </>
+        )}
+
+        {activeTab === 'characters' && (
+          <Panel title="Character presets">
+            <form onSubmit={saveCharacter} style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+              <input style={inputStyle} value={characterName} onChange={(e) => setCharacterName(e.target.value)} placeholder="character name" />
+              <input style={inputStyle} value={characterDescription} onChange={(e) => setCharacterDescription(e.target.value)} placeholder="description" />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8 }}>
+                <input style={inputStyle} value={characterVersionFamily} onChange={(e) => setCharacterVersionFamily(e.target.value)} placeholder="version family" />
+                <input style={inputStyle} value={characterVersion} onChange={(e) => setCharacterVersion(e.target.value)} type="number" min={1} />
+              </div>
+              <input style={inputStyle} value={characterRequiredSdxlBaseModel} onChange={(e) => setCharacterRequiredSdxlBaseModel(e.target.value)} placeholder="required SDXL base model" />
+              <input style={inputStyle} value={characterRecommendedSdxlBaseModel} onChange={(e) => setCharacterRecommendedSdxlBaseModel(e.target.value)} placeholder="recommended SDXL base model" />
+              <button style={btnStyle} type="submit">Save current composer as character</button>
+            </form>
+
+            {characters.map((character) => (
+              <div key={character.id} style={{ borderTop: `1px solid ${ui.border}`, padding: '10px 0' }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <strong>{character.name}</strong>
+                  <span style={{ color: ui.muted }}>family: {character.version_family || 'n/a'}</span>
+                  <span style={{ color: ui.muted }}>v{character.version}</span>
+                  {character.required_sdxl_base_model && <span style={{ color: ui.warn }}>Required SDXL: {character.required_sdxl_base_model}</span>}
+                  {character.recommended_sdxl_base_model && <span style={{ color: ui.accent }}>Recommended SDXL: {character.recommended_sdxl_base_model}</span>}
+                  {character.required_loras.length > 0 && <span style={{ color: ui.ok }}>LoRAs: {character.required_loras.join(', ')}</span>}
+                </div>
+                {character.description && <p style={{ color: ui.muted }}>{character.description}</p>}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button style={btnGhostStyle} onClick={() => loadCharacter(character)}>Load</button>
+                  <button style={btnGhostStyle} onClick={() => void duplicateCharacterVersion(character.id)}>Duplicate next version</button>
+                  <button style={btnGhostStyle} onClick={() => void deleteCharacter(character.id)}>Delete</button>
+                </div>
+              </div>
+            ))}
+          </Panel>
+        )}
+      </div>
     </main>
+  )
+}
+
+function Panel({ title, children }: { title: string, children: React.ReactNode }) {
+  return (
+    <section style={{ background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 12, padding: 12 }}>
+      <h3 style={{ marginTop: 0 }}>{title}</h3>
+      {children}
+    </section>
+  )
+}
+
+function StatCard({ title, value, highlight }: { title: string, value: string, highlight?: boolean }) {
+  return (
+    <div style={{ background: ui.panel, border: `1px solid ${highlight ? ui.accent : ui.border}`, borderRadius: 12, padding: 12 }}>
+      <div style={{ color: ui.muted, fontSize: 13 }}>{title}</div>
+      <div style={{ fontSize: 18, marginTop: 4 }}>{value}</div>
+    </div>
   )
 }
 
@@ -646,76 +614,68 @@ function ComposerList({
   items: ComposerItem[]
   setItems: React.Dispatch<React.SetStateAction<ComposerItem[]>>
   categoryOptions: string[]
-  updatePart: (
-    setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>,
-    idx: number,
-    patch: Partial<ComposerItem>,
-  ) => void
+  updatePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number, patch: Partial<ComposerItem>) => void
   movePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number, dir: -1 | 1) => void
   removePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number) => void
 }) {
   return (
-    <div style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }}>
-      <h3>{title}</h3>
-      {items.length === 0 && <p style={{ opacity: 0.7 }}>No parts yet.</p>}
+    <Panel title={title}>
+      {items.length === 0 && <p style={{ color: ui.muted }}>No items yet</p>}
       {items.map((item, idx) => (
-        <div key={item.id} style={{ border: '1px solid #f2f2f2', borderRadius: 6, padding: 8, marginBottom: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px auto', gap: 8, marginBottom: 8 }}>
-          <input value={item.text} onChange={(e) => updatePart(setItems, idx, { text: e.target.value })} />
-          <input
-            type="number"
-            step="0.1"
-            placeholder="weight"
-            value={item.weight ?? ''}
-            onChange={(e) => updatePart(setItems, idx, { weight: e.target.value ? Number(e.target.value) : undefined })}
-          />
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={() => movePart(setItems, idx, -1)}>↑</button>
-            <button onClick={() => movePart(setItems, idx, 1)}>↓</button>
-            <button onClick={() => removePart(setItems, idx)}>✕</button>
+        <div key={item.id} style={{ border: `1px solid ${ui.border}`, borderRadius: 10, padding: 8, marginBottom: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px auto', gap: 8, marginBottom: 8 }}>
+            <input style={inputStyle} value={item.text} onChange={(e) => updatePart(setItems, idx, { text: e.target.value })} />
+            <input style={inputStyle} type="number" step="0.1" placeholder="weight" value={item.weight ?? ''} onChange={(e) => updatePart(setItems, idx, { weight: e.target.value ? Number(e.target.value) : undefined })} />
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button style={btnGhostStyle} onClick={() => movePart(setItems, idx, -1)}>↑</button>
+              <button style={btnGhostStyle} onClick={() => movePart(setItems, idx, 1)}>↓</button>
+              <button style={btnGhostStyle} onClick={() => removePart(setItems, idx)}>✕</button>
+            </div>
           </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'center' }}>
-            <select
-              value={item.category ?? ''}
-              onChange={(e) => updatePart(setItems, idx, { category: e.target.value || undefined })}
-            >
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, marginBottom: 8 }}>
+            <select style={inputStyle} value={item.category ?? ''} onChange={(e) => updatePart(setItems, idx, { category: e.target.value || undefined })}>
               <option value="">No category</option>
-              {categoryOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
+              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <input
-                type="checkbox"
-                checked={Boolean(item.isImportant)}
-                onChange={(e) => updatePart(setItems, idx, { isImportant: e.target.checked })}
-              />
-              important
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <input
-                type="checkbox"
-                checked={Boolean(item.isRecurring)}
-                onChange={(e) => updatePart(setItems, idx, { isRecurring: e.target.checked })}
-              />
-              recurring/quality
-            </label>
+            <label><input type="checkbox" checked={Boolean(item.isImportant)} onChange={(e) => updatePart(setItems, idx, { isImportant: e.target.checked })} /> important</label>
+            <label><input type="checkbox" checked={Boolean(item.isRecurring)} onChange={(e) => updatePart(setItems, idx, { isRecurring: e.target.checked })} /> recurring</label>
           </div>
-          <div style={{ marginTop: 8 }}>
-            <input
-              value={item.requiredLora ?? ''}
-              onChange={(e) => updatePart(setItems, idx, { requiredLora: e.target.value || undefined })}
-              placeholder="Required LoRA (optional)"
-              style={{ width: '100%' }}
-            />
-          </div>
+          <input style={inputStyle} value={item.requiredLora ?? ''} onChange={(e) => updatePart(setItems, idx, { requiredLora: e.target.value || undefined })} placeholder="Required LoRA" />
         </div>
       ))}
-    </div>
+    </Panel>
   )
+}
+
+const inputStyle: React.CSSProperties = {
+  background: ui.panel2,
+  color: ui.text,
+  border: `1px solid ${ui.border}`,
+  borderRadius: 8,
+  padding: '8px 10px',
+}
+
+const textareaStyle: React.CSSProperties = {
+  ...inputStyle,
+  width: '100%',
+}
+
+const btnStyle: React.CSSProperties = {
+  background: ui.accent,
+  color: '#fff',
+  border: 'none',
+  borderRadius: 8,
+  padding: '8px 12px',
+  cursor: 'pointer',
+}
+
+const btnGhostStyle: React.CSSProperties = {
+  background: ui.panel2,
+  color: ui.text,
+  border: `1px solid ${ui.border}`,
+  borderRadius: 8,
+  padding: '6px 10px',
+  cursor: 'pointer',
 }
 
 createRoot(document.getElementById('root')!).render(
