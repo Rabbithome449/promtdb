@@ -133,7 +133,8 @@ function App() {
   const [presets, setPresets] = useState<Preset[]>([])
   const [characters, setCharacters] = useState<CharacterPreset[]>([])
 
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
+  const [librarySelectedCategoryId, setLibrarySelectedCategoryId] = useState<number | null>(null)
+  const [composerSelectedCategoryId, setComposerSelectedCategoryId] = useState<number | null>(null)
 
   const [newCategoryName, setNewCategoryName] = useState('')
   const [newPhraseText, setNewPhraseText] = useState('')
@@ -230,10 +231,18 @@ function App() {
     return { score, issues }
   }, [positiveParts, negativeParts, requiredLoras.length])
 
-  const categoryPhrases = useMemo(() => phrases.filter((p) => p.category_id === selectedCategoryId), [phrases, selectedCategoryId])
-  const recentPhrases = useMemo(
-    () => [...phrases].sort((a, b) => (b.id ?? 0) - (a.id ?? 0)).slice(0, 20),
-    [phrases],
+  const libraryCategoryPhrases = useMemo(
+    () => phrases.filter((p) => p.category_id === librarySelectedCategoryId),
+    [phrases, librarySelectedCategoryId],
+  )
+  const composerCategoryPhrases = useMemo(
+    () => phrases.filter((p) => p.category_id === composerSelectedCategoryId),
+    [phrases, composerSelectedCategoryId],
+  )
+  const effectivePhraseCategoryId = newPhraseCategoryId ?? librarySelectedCategoryId ?? categories[0]?.id ?? null
+  const phrasesInEffectivePhraseCategory = useMemo(
+    () => phrases.filter((p) => p.category_id === effectivePhraseCategoryId),
+    [phrases, effectivePhraseCategoryId],
   )
 
   const sortedPositiveParts = useMemo(() => orderParts(positiveParts), [positiveParts, categories])
@@ -241,7 +250,6 @@ function App() {
 
   const positivePrompt = useMemo(() => toPrompt(sortedPositiveParts), [sortedPositiveParts])
   const negativePrompt = useMemo(() => toPrompt(sortedNegativeParts), [sortedNegativeParts])
-  const effectivePhraseCategoryId = newPhraseCategoryId ?? selectedCategoryId ?? categories[0]?.id ?? null
 
   async function loadAll() {
     setLoading(true)
@@ -257,7 +265,8 @@ function App() {
       setPhrases(p)
       setPresets(pr)
       setCharacters(ch)
-      if (selectedCategoryId === null && c.length > 0) setSelectedCategoryId(c[0].id)
+      if (librarySelectedCategoryId === null && c.length > 0) setLibrarySelectedCategoryId(c[0].id)
+      if (composerSelectedCategoryId === null && c.length > 0) setComposerSelectedCategoryId(c[0].id)
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error'
       if (msg === 'UNAUTHORIZED') {
@@ -284,16 +293,17 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (newPhraseCategoryId === null && selectedCategoryId !== null) {
-      setNewPhraseCategoryId(selectedCategoryId)
+    if (newPhraseCategoryId === null && librarySelectedCategoryId !== null) {
+      setNewPhraseCategoryId(librarySelectedCategoryId)
     }
-  }, [selectedCategoryId, newPhraseCategoryId])
+  }, [librarySelectedCategoryId, newPhraseCategoryId])
 
   useEffect(() => {
     if (categories.length === 0) return
-    if (selectedCategoryId === null) setSelectedCategoryId(categories[0].id)
+    if (librarySelectedCategoryId === null) setLibrarySelectedCategoryId(categories[0].id)
+    if (composerSelectedCategoryId === null) setComposerSelectedCategoryId(categories[0].id)
     if (newPhraseCategoryId === null) setNewPhraseCategoryId(categories[0].id)
-  }, [categories, selectedCategoryId, newPhraseCategoryId])
+  }, [categories, librarySelectedCategoryId, composerSelectedCategoryId, newPhraseCategoryId])
 
   async function createCategory(e: React.FormEvent) {
     e.preventDefault()
@@ -316,7 +326,8 @@ function App() {
   async function removeCategory(id: number) {
     if (!window.confirm('Delete category and all its phrases?')) return
     await api(`/categories/${id}`, { method: 'DELETE' })
-    if (selectedCategoryId === id) setSelectedCategoryId(null)
+    if (librarySelectedCategoryId === id) setLibrarySelectedCategoryId(null)
+    if (composerSelectedCategoryId === id) setComposerSelectedCategoryId(null)
     await loadAll()
   }
 
@@ -332,7 +343,7 @@ function App() {
         is_negative_default: false,
         notes: newPhraseNotes.trim() || null,
         required_lora: newPhraseRequiredLora.trim() || null,
-        sort_order: categoryPhrases.length,
+        sort_order: phrasesInEffectivePhraseCategory.length,
       }),
     })
     setNewPhraseText('')
@@ -352,7 +363,7 @@ function App() {
       method: 'PATCH',
       body: JSON.stringify({ category_id: categoryId }),
     })
-    setSelectedCategoryId(categoryId)
+    setLibrarySelectedCategoryId(categoryId)
     await loadAll()
   }
 
@@ -584,19 +595,23 @@ function App() {
               </form>
               {categories.map((c) => (
                 <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                  <button style={btnStyle} onClick={() => setSelectedCategoryId(c.id)}>{c.name}</button>
+                  <button style={btnStyle} onClick={() => setLibrarySelectedCategoryId(c.id)}>{c.name}</button>
                   <button style={btnGhostStyle} onClick={() => renameCategory(c.id, c.name)}>Rename</button>
                   <button style={btnGhostStyle} onClick={() => removeCategory(c.id)}>Delete</button>
                 </div>
               ))}
             </Panel>
 
-            <Panel title={`Phrases ${selectedCategoryId ? '' : '(select category)'}`}>
+            <Panel title={`Phrases ${librarySelectedCategoryId ? '' : '(select category)'}`}>
               <form onSubmit={createPhrase} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
                 <select
                   style={inputStyle}
                   value={effectivePhraseCategoryId ?? ''}
-                  onChange={(e) => setNewPhraseCategoryId(e.target.value ? Number(e.target.value) : null)}
+                  onChange={(e) => {
+                    const nextId = e.target.value ? Number(e.target.value) : null
+                    setNewPhraseCategoryId(nextId)
+                    setLibrarySelectedCategoryId(nextId)
+                  }}
                 >
                   <option value="" disabled>
                     Select category
@@ -613,8 +628,8 @@ function App() {
                 <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder="required LoRA" />
                 <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId}>Add phrase</button>
               </form>
-              <h4 style={{ margin: '8px 0', color: ui.muted }}>In selected category ({categoryPhrases.length})</h4>
-              {categoryPhrases.map((p) => (
+              <h4 style={{ margin: '8px 0', color: ui.muted }}>In selected category ({libraryCategoryPhrases.length})</h4>
+              {libraryCategoryPhrases.map((p) => (
                 <div key={`cat-${p.id}`} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                     <strong>{p.text}</strong>
@@ -640,19 +655,6 @@ function App() {
                 </div>
               ))}
 
-              <h4 style={{ margin: '14px 0 8px 0', color: ui.muted }}>Recently created (last 20)</h4>
-              {recentPhrases.map((p) => (
-                <div key={`recent-${p.id}`} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <strong>{p.text}</strong>
-                    <span style={{ color: ui.muted }}>#{p.id}</span>
-                    <span style={{ color: ui.muted }}>[{categoryNameById.get(p.category_id) || 'Uncategorized'}]</span>
-                    <button style={btnGhostStyle} onClick={() => setSelectedCategoryId(p.category_id)}>Go to category</button>
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'positive')}>➕ Positive</button>
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>➖ Negative</button>
-                  </div>
-                </div>
-              ))}
             </Panel>
           </section>
         )}
@@ -664,8 +666,8 @@ function App() {
                 <span style={{ color: ui.muted }}>Category:</span>
                 <select
                   style={inputStyle}
-                  value={selectedCategoryId ?? ''}
-                  onChange={(e) => setSelectedCategoryId(e.target.value ? Number(e.target.value) : null)}
+                  value={composerSelectedCategoryId ?? ''}
+                  onChange={(e) => setComposerSelectedCategoryId(e.target.value ? Number(e.target.value) : null)}
                 >
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -675,7 +677,7 @@ function App() {
                 </select>
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
-                {categoryPhrases.map((p) => (
+                {composerCategoryPhrases.map((p) => (
                   <div key={`picker-${p.id}`} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <strong>{p.text}</strong>
                     {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
@@ -684,7 +686,7 @@ function App() {
                     <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>➖ Negative</button>
                   </div>
                 ))}
-                {categoryPhrases.length === 0 && <span style={{ color: ui.muted }}>No phrases in selected category.</span>}
+                {composerCategoryPhrases.length === 0 && <span style={{ color: ui.muted }}>No phrases in selected category.</span>}
               </div>
             </Panel>
 
