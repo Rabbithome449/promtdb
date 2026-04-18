@@ -142,6 +142,8 @@ function App() {
   const [newPhraseWeight, setNewPhraseWeight] = useState('')
   const [newPhraseNotes, setNewPhraseNotes] = useState('')
   const [newPhraseRequiredLora, setNewPhraseRequiredLora] = useState('')
+  const [isPhraseModalOpen, setIsPhraseModalOpen] = useState(false)
+  const [editingPhraseId, setEditingPhraseId] = useState<number | null>(null)
 
   const [presetName, setPresetName] = useState('')
   const [characterName, setCharacterName] = useState('')
@@ -293,6 +295,11 @@ function App() {
   }, [])
 
   useEffect(() => {
+    document.body.style.margin = '0'
+    document.body.style.background = ui.bg
+  }, [])
+
+  useEffect(() => {
     if (newPhraseCategoryId === null && librarySelectedCategoryId !== null) {
       setNewPhraseCategoryId(librarySelectedCategoryId)
     }
@@ -331,25 +338,59 @@ function App() {
     await loadAll()
   }
 
-  async function createPhrase(e: React.FormEvent) {
-    e.preventDefault()
-    if (!effectivePhraseCategoryId || !newPhraseText.trim()) return
-    await api<Phrase>('/phrases', {
-      method: 'POST',
-      body: JSON.stringify({
-        category_id: effectivePhraseCategoryId,
-        text: newPhraseText.trim(),
-        default_weight: newPhraseWeight.trim() ? Number(newPhraseWeight) : null,
-        is_negative_default: false,
-        notes: newPhraseNotes.trim() || null,
-        required_lora: newPhraseRequiredLora.trim() || null,
-        sort_order: phrasesInEffectivePhraseCategory.length,
-      }),
-    })
+  function openCreatePhraseModal() {
+    setEditingPhraseId(null)
+    if (newPhraseCategoryId === null) setNewPhraseCategoryId(librarySelectedCategoryId ?? categories[0]?.id ?? null)
     setNewPhraseText('')
     setNewPhraseWeight('')
     setNewPhraseNotes('')
     setNewPhraseRequiredLora('')
+    setIsPhraseModalOpen(true)
+  }
+
+  function openEditPhraseModal(phrase: Phrase) {
+    setEditingPhraseId(phrase.id)
+    setNewPhraseCategoryId(phrase.category_id)
+    setNewPhraseText(phrase.text)
+    setNewPhraseWeight(phrase.default_weight === null ? '' : String(phrase.default_weight))
+    setNewPhraseNotes(phrase.notes ?? '')
+    setNewPhraseRequiredLora(phrase.required_lora ?? '')
+    setIsPhraseModalOpen(true)
+  }
+
+  function closePhraseModal() {
+    setIsPhraseModalOpen(false)
+    setEditingPhraseId(null)
+  }
+
+  async function submitPhraseForm(e: React.FormEvent) {
+    e.preventDefault()
+    if (!effectivePhraseCategoryId || !newPhraseText.trim()) return
+    const body = {
+      category_id: effectivePhraseCategoryId,
+      text: newPhraseText.trim(),
+      default_weight: newPhraseWeight.trim() ? Number(newPhraseWeight) : null,
+      is_negative_default: false,
+      notes: newPhraseNotes.trim() || null,
+      required_lora: newPhraseRequiredLora.trim() || null,
+      sort_order: phrasesInEffectivePhraseCategory.length,
+    }
+    if (editingPhraseId === null) {
+      await api<Phrase>('/phrases', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })
+    } else {
+      await api(`/phrases/${editingPhraseId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      })
+    }
+    setNewPhraseText('')
+    setNewPhraseWeight('')
+    setNewPhraseNotes('')
+    setNewPhraseRequiredLora('')
+    closePhraseModal()
     await loadAll()
   }
 
@@ -542,7 +583,10 @@ function App() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ color: ui.muted }}>{loading ? 'syncing...' : 'ready'}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: ui.muted }}>
+              <span style={{ width: 10, height: 10, borderRadius: 999, background: loading ? ui.danger : ui.ok, display: 'inline-block' }} />
+              {loading ? 'syncing...' : 'ready'}
+            </span>
             <button style={btnGhostStyle} onClick={logout}>Logout</button>
           </div>
         </header>
@@ -603,7 +647,7 @@ function App() {
             </Panel>
 
             <Panel title={`Phrases ${librarySelectedCategoryId ? '' : '(select category)'}`}>
-              <form onSubmit={createPhrase} style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select
                   style={inputStyle}
                   value={effectivePhraseCategoryId ?? ''}
@@ -622,12 +666,8 @@ function App() {
                     </option>
                   ))}
                 </select>
-                <input style={inputStyle} value={newPhraseText} onChange={(e) => setNewPhraseText(e.target.value)} placeholder="Phrase text" />
-                <input style={inputStyle} value={newPhraseWeight} onChange={(e) => setNewPhraseWeight(e.target.value)} placeholder="default weight (optional)" type="number" step="0.1" />
-                <input style={inputStyle} value={newPhraseNotes} onChange={(e) => setNewPhraseNotes(e.target.value)} placeholder="notes" />
-                <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder="required LoRA" />
-                <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId}>Add phrase</button>
-              </form>
+                <button style={btnStyle} type="button" disabled={!effectivePhraseCategoryId} onClick={openCreatePhraseModal}>+ New phrase</button>
+              </div>
               <h4 style={{ margin: '8px 0', color: ui.muted }}>In selected category ({libraryCategoryPhrases.length})</h4>
               {libraryCategoryPhrases.map((p) => (
                 <div key={`cat-${p.id}`} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
@@ -635,22 +675,8 @@ function App() {
                     <strong>{p.text}</strong>
                     {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
                     {p.required_lora && <span style={{ color: ui.ok }}>LoRA: {p.required_lora}</span>}
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'positive')}>➕ Positive</button>
-                    <button style={btnGhostStyle} onClick={() => addPhraseToComposer(p, 'negative')}>➖ Negative</button>
-                    <button style={btnGhostStyle} onClick={() => removePhrase(p.id)}>Delete</button>
-                  </div>
-                  <div style={{ marginTop: 8 }}>
-                    <select
-                      style={inputStyle}
-                      value={p.category_id}
-                      onChange={(e) => void changePhraseCategory(p, Number(e.target.value))}
-                    >
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
+                    <button style={btnGhostStyle} onClick={() => openEditPhraseModal(p)} title="Edit">✏️</button>
+                    <button style={btnGhostStyle} onClick={() => removePhrase(p.id)} title="Delete">🗑️</button>
                   </div>
                 </div>
               ))}
@@ -788,6 +814,45 @@ function App() {
               </div>
             ))}
           </Panel>
+        )}
+
+        {isPhraseModalOpen && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(9,15,27,0.72)', display: 'grid', placeItems: 'center', zIndex: 50, padding: 16 }}>
+            <div style={{ width: 'min(680px, 100%)', background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 14, padding: 14, boxShadow: ui.shadow }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <h3 style={{ margin: 0 }}>{editingPhraseId === null ? 'Create phrase' : 'Edit phrase'}</h3>
+                <button style={btnGhostStyle} onClick={closePhraseModal}>✕</button>
+              </div>
+              <form onSubmit={submitPhraseForm} style={{ display: 'grid', gap: 8 }}>
+                <select
+                  style={inputStyle}
+                  value={effectivePhraseCategoryId ?? ''}
+                  onChange={(e) => {
+                    const nextId = e.target.value ? Number(e.target.value) : null
+                    setNewPhraseCategoryId(nextId)
+                    setLibrarySelectedCategoryId(nextId)
+                  }}
+                >
+                  <option value="" disabled>
+                    Select category
+                  </option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <input style={inputStyle} value={newPhraseText} onChange={(e) => setNewPhraseText(e.target.value)} placeholder="Phrase text" />
+                <input style={inputStyle} value={newPhraseWeight} onChange={(e) => setNewPhraseWeight(e.target.value)} placeholder="default weight (optional)" type="number" step="0.1" />
+                <input style={inputStyle} value={newPhraseNotes} onChange={(e) => setNewPhraseNotes(e.target.value)} placeholder="notes" />
+                <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder="required LoRA" />
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button style={btnGhostStyle} type="button" onClick={closePhraseModal}>Cancel</button>
+                  <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId || !newPhraseText.trim()}>{editingPhraseId === null ? 'Create' : 'Save'}</button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
           </>
         )}
