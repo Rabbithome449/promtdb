@@ -45,6 +45,8 @@ class CharacterPreset(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True, min_length=1)
     description: Optional[str] = None
+    required_sdxl_base_model: Optional[str] = None
+    recommended_sdxl_base_model: Optional[str] = None
     positive_prompt: str = ""
     negative_prompt: str = ""
     positive_parts: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
@@ -118,6 +120,8 @@ class PromptPresetUpdate(SQLModel):
 class CharacterPresetCreate(SQLModel):
     name: str
     description: Optional[str] = None
+    required_sdxl_base_model: Optional[str] = None
+    recommended_sdxl_base_model: Optional[str] = None
     positive_prompt: str = ""
     negative_prompt: str = ""
     positive_parts: list[PromptPart] = Field(default_factory=list)
@@ -128,6 +132,8 @@ class CharacterPresetCreate(SQLModel):
 class CharacterPresetUpdate(SQLModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    required_sdxl_base_model: Optional[str] = None
+    recommended_sdxl_base_model: Optional[str] = None
     positive_prompt: Optional[str] = None
     negative_prompt: Optional[str] = None
     positive_parts: Optional[list[PromptPart]] = None

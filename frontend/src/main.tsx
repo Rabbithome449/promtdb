@@ -38,6 +38,8 @@ type CharacterPreset = {
   id: number
   name: string
   description: string | null
+  required_sdxl_base_model: string | null
+  recommended_sdxl_base_model: string | null
   positive_prompt: string
   negative_prompt: string
   positive_parts: PromptPart[]
@@ -100,6 +102,8 @@ function App() {
   const [presetName, setPresetName] = useState('')
   const [characterName, setCharacterName] = useState('')
   const [characterDescription, setCharacterDescription] = useState('')
+  const [characterRequiredSdxlBaseModel, setCharacterRequiredSdxlBaseModel] = useState('')
+  const [characterRecommendedSdxlBaseModel, setCharacterRecommendedSdxlBaseModel] = useState('')
 
   const [positiveParts, setPositiveParts] = useState<ComposerItem[]>([])
   const [negativeParts, setNegativeParts] = useState<ComposerItem[]>([])
@@ -335,6 +339,8 @@ function App() {
       body: JSON.stringify({
         name: characterName.trim(),
         description: characterDescription.trim() || null,
+        required_sdxl_base_model: characterRequiredSdxlBaseModel.trim() || null,
+        recommended_sdxl_base_model: characterRecommendedSdxlBaseModel.trim() || null,
         positive_prompt: positivePrompt,
         negative_prompt: negativePrompt,
         positive_parts: positiveParts.map((p) => ({
@@ -358,6 +364,8 @@ function App() {
     })
     setCharacterName('')
     setCharacterDescription('')
+    setCharacterRequiredSdxlBaseModel('')
+    setCharacterRecommendedSdxlBaseModel('')
     await loadAll()
   }
 
@@ -556,6 +564,16 @@ function App() {
             onChange={(e) => setCharacterDescription(e.target.value)}
             placeholder="Description (optional)"
           />
+          <input
+            value={characterRequiredSdxlBaseModel}
+            onChange={(e) => setCharacterRequiredSdxlBaseModel(e.target.value)}
+            placeholder="Required SDXL base model (optional)"
+          />
+          <input
+            value={characterRecommendedSdxlBaseModel}
+            onChange={(e) => setCharacterRecommendedSdxlBaseModel(e.target.value)}
+            placeholder="Recommended SDXL base model (optional)"
+          />
           <button type="submit">Save current full prompt as character</button>
         </form>
 
@@ -564,6 +582,12 @@ function App() {
             <li key={character.id} style={{ borderTop: '1px solid #eee', padding: '8px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <strong>{character.name}</strong>
+                {character.required_sdxl_base_model && (
+                  <span style={{ color: '#b22222' }}>Required SDXL: {character.required_sdxl_base_model}</span>
+                )}
+                {character.recommended_sdxl_base_model && (
+                  <span style={{ color: '#1e40af' }}>Recommended SDXL: {character.recommended_sdxl_base_model}</span>
+                )}
                 {character.required_loras.length > 0 && (
                   <span style={{ color: '#006400' }}>LoRAs: {character.required_loras.join(', ')}</span>
                 )}

@@ -23,6 +23,13 @@ def init_db() -> None:
             if "required_lora" not in cols:
                 conn.execute(text("ALTER TABLE phrase ADD COLUMN required_lora VARCHAR"))
 
+        if "characterpreset" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("characterpreset")}
+            if "required_sdxl_base_model" not in cols:
+                conn.execute(text("ALTER TABLE characterpreset ADD COLUMN required_sdxl_base_model VARCHAR"))
+            if "recommended_sdxl_base_model" not in cols:
+                conn.execute(text("ALTER TABLE characterpreset ADD COLUMN recommended_sdxl_base_model VARCHAR"))
+
 
 def get_session():
     with Session(engine) as session:

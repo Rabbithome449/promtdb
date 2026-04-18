@@ -241,6 +241,8 @@ def create_character(payload: CharacterPresetCreate, session: Session = Depends(
     item = CharacterPreset(
         name=payload.name.strip(),
         description=(payload.description or "").strip() or None,
+        required_sdxl_base_model=(payload.required_sdxl_base_model or "").strip() or None,
+        recommended_sdxl_base_model=(payload.recommended_sdxl_base_model or "").strip() or None,
         positive_prompt=payload.positive_prompt.strip(),
         negative_prompt=payload.negative_prompt.strip(),
         positive_parts=[part.model_dump() for part in payload.positive_parts],
@@ -264,6 +266,10 @@ def update_character(character_id: int, payload: CharacterPresetUpdate, session:
         data["name"] = data["name"].strip()
     if "description" in data and data["description"] is not None:
         data["description"] = data["description"].strip() or None
+    if "required_sdxl_base_model" in data and data["required_sdxl_base_model"] is not None:
+        data["required_sdxl_base_model"] = data["required_sdxl_base_model"].strip() or None
+    if "recommended_sdxl_base_model" in data and data["recommended_sdxl_base_model"] is not None:
+        data["recommended_sdxl_base_model"] = data["recommended_sdxl_base_model"].strip() or None
     if "positive_prompt" in data and data["positive_prompt"] is not None:
         data["positive_prompt"] = data["positive_prompt"].strip()
     if "negative_prompt" in data and data["negative_prompt"] is not None:
