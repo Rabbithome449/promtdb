@@ -8,11 +8,16 @@ Pragmatic MVP for managing Stable Diffusion prompt tags/phrases and composing po
 - Database: PostgreSQL
 - Local test deployment: Docker Compose
 
-## Quick start with Docker Compose (recommended)
+## Quick start with Docker Compose / Portainer Stack
 
 ```bash
 docker compose up --build
 ```
+
+Portainer (ohne Schnickschnack):
+- Stack aus dem Git-Repo erstellen
+- Branch: `main`
+- Compose path: `docker-compose.yml`
 
 Services:
 - Web UI: `http://localhost:8080`

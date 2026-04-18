@@ -1,35 +1,28 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: promtdb
       POSTGRES_USER: promtdb
       POSTGRES_PASSWORD: promtdb
-    ports:
-      - "5432:5432"
     volumes:
       - promtdb_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U promtdb -d promtdb"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
 
   api:
-    build:
-      context: ./backend
+    build: ./backend
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://promtdb:promtdb@db:5432/promtdb
-      CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+      CORS_ORIGINS: "*"
     depends_on:
-      db:
-        condition: service_healthy
+      - db
     ports:
       - "8000:8000"
 
   web:
-    build:
-      context: ./frontend
+    build: ./frontend
+    restart: unless-stopped
     depends_on:
       - api
     ports:
