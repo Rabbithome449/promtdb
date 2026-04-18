@@ -104,15 +104,18 @@ function toPrompt(parts: ComposerItem[]) {
 }
 
 const ui = {
-  bg: '#0b1220',
-  panel: '#131c2e',
-  panel2: '#1a253d',
+  bg: '#090f1b',
+  bg2: '#111b2f',
+  panel: '#131e33',
+  panel2: '#1a2742',
   text: '#e7edf7',
   muted: '#9fb0cc',
   border: '#2b3a58',
   accent: '#5ea2ff',
   ok: '#52c98c',
   warn: '#f5c26b',
+  danger: '#ff8f8f',
+  shadow: '0 10px 30px rgba(0,0,0,0.25)',
 }
 
 function App() {
@@ -493,28 +496,31 @@ function App() {
   }
 
   return (
-    <main style={{ background: ui.bg, minHeight: '100vh', color: ui.text, fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: 20 }}>
+    <main style={{ background: `radial-gradient(circle at top, ${ui.bg2}, ${ui.bg})`, minHeight: '100vh', color: ui.text, fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div style={{ maxWidth: 1320, margin: '0 auto', padding: 24 }}>
         {!isAuthenticated ? (
           <Panel title="Login">
             <form onSubmit={login} style={{ display: 'grid', gap: 8, maxWidth: 420 }}>
               <input style={inputStyle} value={loginUser} onChange={(e) => setLoginUser(e.target.value)} placeholder="username" />
               <input style={inputStyle} type="password" value={loginPass} onChange={(e) => setLoginPass(e.target.value)} placeholder="password" />
               <button style={btnStyle} type="submit">Login</button>
-              {loginError && <span style={{ color: '#ff8f8f' }}>{loginError}</span>}
+              {loginError && <span style={{ color: ui.danger }}>{loginError}</span>}
             </form>
           </Panel>
         ) : (
           <>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h1 style={{ margin: 0 }}>promtdb</h1>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <div>
+            <h1 style={{ margin: 0, letterSpacing: 0.2 }}>promtdb</h1>
+            <p style={{ margin: '4px 0 0 0', color: ui.muted, fontSize: 13 }}>Structured Prompt Builder for Stable Diffusion</p>
+          </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ color: ui.muted }}>{loading ? 'syncing...' : 'ready'}</span>
             <button style={btnGhostStyle} onClick={logout}>Logout</button>
           </div>
         </header>
 
-        <nav style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <nav style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
           {[
             ['dashboard', 'Dashboard'],
             ['library', 'Library'],
@@ -528,9 +534,11 @@ function App() {
                 background: activeTab === k ? ui.accent : ui.panel,
                 color: ui.text,
                 border: `1px solid ${ui.border}`,
-                borderRadius: 10,
-                padding: '8px 14px',
+                borderRadius: 999,
+                padding: '9px 16px',
+                fontWeight: 600,
                 cursor: 'pointer',
+                boxShadow: activeTab === k ? '0 0 0 3px rgba(94,162,255,0.2)' : 'none',
               }}
             >
               {label}
@@ -538,7 +546,7 @@ function App() {
           ))}
         </nav>
 
-        {error && <p style={{ color: '#ff8f8f' }}>{error}</p>}
+        {error && <p style={{ color: ui.danger }}>{error}</p>}
 
         {activeTab === 'dashboard' && (
           <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
@@ -757,8 +765,8 @@ function App() {
 
 function Panel({ title, children }: { title: string, children: React.ReactNode }) {
   return (
-    <section style={{ background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 12, padding: 12 }}>
-      <h3 style={{ marginTop: 0 }}>{title}</h3>
+    <section style={{ background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 14, padding: 14, boxShadow: ui.shadow }}>
+      <h3 style={{ margin: '0 0 10px 0', fontSize: 17 }}>{title}</h3>
       {children}
     </section>
   )
@@ -766,9 +774,9 @@ function Panel({ title, children }: { title: string, children: React.ReactNode }
 
 function StatCard({ title, value, highlight }: { title: string, value: string, highlight?: boolean }) {
   return (
-    <div style={{ background: ui.panel, border: `1px solid ${highlight ? ui.accent : ui.border}`, borderRadius: 12, padding: 12 }}>
+    <div style={{ background: ui.panel, border: `1px solid ${highlight ? ui.accent : ui.border}`, borderRadius: 14, padding: 14, boxShadow: ui.shadow }}>
       <div style={{ color: ui.muted, fontSize: 13 }}>{title}</div>
-      <div style={{ fontSize: 18, marginTop: 4 }}>{value}</div>
+      <div style={{ fontSize: 19, marginTop: 6, fontWeight: 700 }}>{value}</div>
     </div>
   )
 }
@@ -818,8 +826,9 @@ const inputStyle: React.CSSProperties = {
   background: ui.panel2,
   color: ui.text,
   border: `1px solid ${ui.border}`,
-  borderRadius: 8,
-  padding: '8px 10px',
+  borderRadius: 10,
+  padding: '10px 12px',
+  fontSize: 14,
 }
 
 const textareaStyle: React.CSSProperties = {
@@ -831,8 +840,9 @@ const btnStyle: React.CSSProperties = {
   background: ui.accent,
   color: '#fff',
   border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
+  borderRadius: 10,
+  padding: '9px 13px',
+  fontWeight: 600,
   cursor: 'pointer',
 }
 
@@ -840,8 +850,9 @@ const btnGhostStyle: React.CSSProperties = {
   background: ui.panel2,
   color: ui.text,
   border: `1px solid ${ui.border}`,
-  borderRadius: 8,
+  borderRadius: 10,
   padding: '6px 10px',
+  fontWeight: 500,
   cursor: 'pointer',
 }
 
