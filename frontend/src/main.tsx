@@ -185,6 +185,52 @@ function App() {
       phrasePicker: 'Phrase Picker',
       positive: 'Positiv',
       negative: 'Negativ',
+      subtitle: 'Baue strukturierte Prompts für Stable Diffusion',
+      categoriesCount: 'Kategorien',
+      phrasesCount: 'Phrasen',
+      presetsCount: 'Presets',
+      charactersCount: 'Charaktere',
+      promptQuality: 'Prompt Qualität',
+      requiredLoras: 'Required LoRAs',
+      none: 'keine',
+      promptInspector: 'Prompt Inspector',
+      qualityScore: 'Quality score',
+      looksClean: 'Sieht sauber und bereit aus.',
+      autoClean: 'Auto-clean',
+      addCinematic: 'Cinematic Starter Pack hinzufügen',
+      structuredView: 'Strukturierte Ansicht',
+      uncategorized: 'Unkategorisiert',
+      qualityRecurring: 'Qualität / Wiederkehrend',
+      negativeGroups: 'Negative Gruppen',
+      importantTag: 'wichtig',
+      positivePrompt: 'Positiver Prompt',
+      negativePrompt: 'Negativer Prompt',
+      copy: 'Kopieren',
+      composerPresets: 'Composer Presets',
+      presetName: 'Preset Name',
+      load: 'Laden',
+      delete: 'Löschen',
+      characterPresets: 'Character Presets',
+      characterName: 'Character Name',
+      description: 'Beschreibung',
+      versionFamily: 'Version Familie',
+      requiredSdxl: 'Erforderliches SDXL Base Model',
+      recommendedSdxl: 'Empfohlenes SDXL Base Model',
+      saveAsCharacter: 'Aktuellen Composer als Character speichern',
+      duplicateNextVersion: 'Nächste Version duplizieren',
+      family: 'Familie',
+      na: 'k.A.',
+      noItemsYet: 'Noch keine Einträge',
+      weight: 'Gewicht',
+      category: 'Kategorie',
+      important: 'wichtig',
+      recurring: 'wiederkehrend',
+      noPositiveParts: 'Keine positiven Teile ausgewählt.',
+      noImportant: 'Kein wichtiger Kernteil markiert.',
+      noRequiredLora: 'Kein Required LoRA erkannt.',
+      conflictTerms: 'Begriffe sind in positiv und negativ enthalten.',
+      positiveDuplicates: 'Doppelte Einträge in positiv.',
+      negativeDuplicates: 'Doppelte Einträge in negativ.',
     },
     en: {
       login: 'Login',
@@ -220,6 +266,52 @@ function App() {
       phrasePicker: 'Phrase picker',
       positive: 'Positive',
       negative: 'Negative',
+      subtitle: 'Forge structured prompts for Stable Diffusion',
+      categoriesCount: 'Categories',
+      phrasesCount: 'Phrases',
+      presetsCount: 'Presets',
+      charactersCount: 'Characters',
+      promptQuality: 'Prompt Quality',
+      requiredLoras: 'Required LoRAs',
+      none: 'none',
+      promptInspector: 'Prompt Inspector',
+      qualityScore: 'Quality score',
+      looksClean: 'Looks clean and ready.',
+      autoClean: 'Auto-clean',
+      addCinematic: 'Add cinematic starter pack',
+      structuredView: 'Structured view',
+      uncategorized: 'Uncategorized',
+      qualityRecurring: 'Quality / Recurring',
+      negativeGroups: 'Negative groups',
+      importantTag: 'important',
+      positivePrompt: 'Positive prompt',
+      negativePrompt: 'Negative prompt',
+      copy: 'Copy',
+      composerPresets: 'Composer Presets',
+      presetName: 'Preset name',
+      load: 'Load',
+      delete: 'Delete',
+      characterPresets: 'Character presets',
+      characterName: 'character name',
+      description: 'description',
+      versionFamily: 'version family',
+      requiredSdxl: 'required SDXL base model',
+      recommendedSdxl: 'recommended SDXL base model',
+      saveAsCharacter: 'Save current composer as character',
+      duplicateNextVersion: 'Duplicate next version',
+      family: 'family',
+      na: 'n/a',
+      noItemsYet: 'No items yet',
+      weight: 'weight',
+      category: 'Category',
+      important: 'important',
+      recurring: 'recurring',
+      noPositiveParts: 'No positive parts selected yet.',
+      noImportant: 'No important/core part is marked.',
+      noRequiredLora: 'No required LoRA detected.',
+      conflictTerms: 'terms appear in both positive and negative.',
+      positiveDuplicates: 'duplicate entries in positive.',
+      negativeDuplicates: 'duplicate entries in negative.',
     },
   } as const
   const t = i18n[language]
@@ -266,25 +358,25 @@ function App() {
     const map = new Map<string, ComposerItem[]>()
     const ordered = orderParts(positiveParts)
     for (const part of ordered) {
-      const key = part.isRecurring ? 'Quality / Recurring' : part.category || 'Uncategorized'
+      const key = part.isRecurring ? t.qualityRecurring : part.category || t.uncategorized
       const curr = map.get(key) || []
       curr.push(part)
       map.set(key, curr)
     }
     return [...map.entries()]
-  }, [positiveParts, categories])
+  }, [positiveParts, categories, t])
 
   const groupedNegative = useMemo(() => {
     const map = new Map<string, ComposerItem[]>()
     const ordered = orderParts(negativeParts)
     for (const part of ordered) {
-      const key = part.category || 'Uncategorized'
+      const key = part.category || t.uncategorized
       const curr = map.get(key) || []
       curr.push(part)
       map.set(key, curr)
     }
     return [...map.entries()]
-  }, [negativeParts, categories])
+  }, [negativeParts, categories, t])
 
   const promptHealth = useMemo(() => {
     const issues: string[] = []
@@ -293,24 +385,24 @@ function App() {
     const duplicatePositiveCount = positiveParts.length - positiveKeys.size
     const duplicateNegativeCount = negativeParts.length - negativeKeys.size
 
-    if (positiveParts.length === 0) issues.push('No positive parts selected yet.')
-    if (duplicatePositiveCount > 0) issues.push(`Positive has ${duplicatePositiveCount} duplicate entries.`)
-    if (duplicateNegativeCount > 0) issues.push(`Negative has ${duplicateNegativeCount} duplicate entries.`)
+    if (positiveParts.length === 0) issues.push(t.noPositiveParts)
+    if (duplicatePositiveCount > 0) issues.push(`Positive has ${duplicatePositiveCount} ${t.positiveDuplicates}`)
+    if (duplicateNegativeCount > 0) issues.push(`Negative has ${duplicateNegativeCount} ${t.negativeDuplicates}`)
 
     let crossConflictCount = 0
     for (const key of positiveKeys) {
       if (negativeKeys.has(key)) crossConflictCount += 1
     }
-    if (crossConflictCount > 0) issues.push(`${crossConflictCount} terms appear in both positive and negative.`)
+    if (crossConflictCount > 0) issues.push(`${crossConflictCount} ${t.conflictTerms}`)
 
     const importantCount = positiveParts.filter((p) => p.isImportant).length
-    if (importantCount === 0 && positiveParts.length > 0) issues.push('No important/core part is marked.')
+    if (importantCount === 0 && positiveParts.length > 0) issues.push(t.noImportant)
 
-    if (requiredLoras.length === 0 && positiveParts.length > 0) issues.push('No required LoRA detected.')
+    if (requiredLoras.length === 0 && positiveParts.length > 0) issues.push(t.noRequiredLora)
 
     const score = Math.max(0, 100 - issues.length * 12)
     return { score, issues }
-  }, [positiveParts, negativeParts, requiredLoras.length])
+  }, [positiveParts, negativeParts, requiredLoras.length, t])
 
   const libraryCategoryPhrases = useMemo(
     () => phrases.filter((p) => p.category_id === librarySelectedCategoryId),
@@ -689,7 +781,7 @@ function App() {
             <img src="/logo.svg" alt="PromptForge logo" style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${ui.border}` }} />
             <div>
               <h1 style={{ margin: 0, letterSpacing: 0.2 }}>PromptForge</h1>
-              <p style={{ margin: '4px 0 0 0', color: ui.muted, fontSize: 13 }}>Forge structured prompts for Stable Diffusion</p>
+              <p style={{ margin: '4px 0 0 0', color: ui.muted, fontSize: 13 }}>{t.subtitle}</p>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -736,12 +828,12 @@ function App() {
 
         {activeTab === 'dashboard' && (
           <section style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit,minmax(${isNarrow ? 170 : 220}px,1fr))`, gap: 12 }}>
-            <StatCard title="Categories" value={String(categories.length)} />
-            <StatCard title="Phrases" value={String(phrases.length)} />
-            <StatCard title="Presets" value={String(presets.length)} />
-            <StatCard title="Characters" value={String(characters.length)} />
-            <StatCard title="Prompt Quality" value={`${promptHealth.score}/100`} highlight />
-            <StatCard title="Required LoRAs" value={requiredLoras.length ? requiredLoras.join(', ') : 'none'} />
+            <StatCard title={t.categoriesCount} value={String(categories.length)} />
+            <StatCard title={t.phrasesCount} value={String(phrases.length)} />
+            <StatCard title={t.presetsCount} value={String(presets.length)} />
+            <StatCard title={t.charactersCount} value={String(characters.length)} />
+            <StatCard title={t.promptQuality} value={`${promptHealth.score}/100`} highlight />
+            <StatCard title={t.requiredLoras} value={requiredLoras.length ? requiredLoras.join(', ') : t.none} />
           </section>
         )}
 
@@ -883,40 +975,40 @@ function App() {
                 onDrop={() => dropPhraseTo('positive')}
                 style={{ borderRadius: 14, boxShadow: draggingPhraseId !== null ? `0 0 0 2px ${ui.accent}` : 'none' }}
               >
-                <ComposerList title={t.positive} items={positiveParts} setItems={setPositiveParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+                <ComposerList title={t.positive} items={positiveParts} setItems={setPositiveParts} updatePart={updatePart} movePart={movePart} removePart={removePart} labels={{ noItemsYet: t.noItemsYet, weight: t.weight, category: t.category, uncategorized: t.uncategorized, important: t.important, recurring: t.recurring, requiredLora: t.requiredLora }} />
               </div>
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => dropPhraseTo('negative')}
                 style={{ borderRadius: 14, boxShadow: draggingPhraseId !== null ? `0 0 0 2px ${ui.accent}` : 'none' }}
               >
-                <ComposerList title={t.negative} items={negativeParts} setItems={setNegativeParts} updatePart={updatePart} movePart={movePart} removePart={removePart} />
+                <ComposerList title={t.negative} items={negativeParts} setItems={setNegativeParts} updatePart={updatePart} movePart={movePart} removePart={removePart} labels={{ noItemsYet: t.noItemsYet, weight: t.weight, category: t.category, uncategorized: t.uncategorized, important: t.important, recurring: t.recurring, requiredLora: t.requiredLora }} />
               </div>
             </section>
 
-            <Panel title="Prompt Inspector">
-              <p style={{ marginTop: 0 }}>Quality score: <strong>{promptHealth.score}/100</strong> {promptHealth.score >= 85 ? '🟢' : promptHealth.score >= 60 ? '🟡' : '🔴'}</p>
+            <Panel title={t.promptInspector}>
+              <p style={{ marginTop: 0 }}>{t.qualityScore}: <strong>{promptHealth.score}/100</strong> {promptHealth.score >= 85 ? '🟢' : promptHealth.score >= 60 ? '🟡' : '🔴'}</p>
               {promptHealth.issues.length ? (
                 <ul>{promptHealth.issues.map((i) => <li key={i}>{i}</li>)}</ul>
               ) : (
-                <p style={{ color: ui.ok }}>Looks clean and ready.</p>
+                <p style={{ color: ui.ok }}>{t.looksClean}</p>
               )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button style={btnStyle} onClick={smartCleanupPrompt}>Auto-clean</button>
-                <button style={btnStyle} onClick={addCinematicStarterPack}>Add cinematic starter pack</button>
+                <button style={btnStyle} onClick={smartCleanupPrompt}>{t.autoClean}</button>
+                <button style={btnStyle} onClick={addCinematicStarterPack}>{t.addCinematic}</button>
               </div>
             </Panel>
 
-            <Panel title="Structured view">
+            <Panel title={t.structuredView}>
               {groupedPositive.map(([group, items]) => (
                 <div key={group} style={{ marginBottom: 10 }}>
                   <strong>🏷️ {group}</strong>
-                  <ul>{items.map((i) => <li key={i.id}>{i.text}{i.weight !== undefined ? ` (${i.weight})` : ''}{i.isImportant ? ' [important]' : ''}</li>)}</ul>
+                  <ul>{items.map((i) => <li key={i.id}>{i.text}{i.weight !== undefined ? ` (${i.weight})` : ''}{i.isImportant ? ` [${t.importantTag}]` : ''}</li>)}</ul>
                 </div>
               ))}
               {groupedNegative.length > 0 && (
                 <>
-                  <h4 style={{ marginBottom: 6 }}>🚫 Negative groups</h4>
+                  <h4 style={{ marginBottom: 6 }}>🚫 {t.negativeGroups}</h4>
                   {groupedNegative.map(([group, items]) => (
                     <div key={`neg-${group}`} style={{ marginBottom: 10 }}>
                       <strong>🏷️ {group}</strong>
@@ -928,27 +1020,27 @@ function App() {
             </Panel>
 
             <section style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-              <Panel title="Positive prompt">
+              <Panel title={t.positivePrompt}>
                 <textarea readOnly value={positivePrompt} rows={4} style={textareaStyle} />
-                <button style={btnStyle} onClick={() => void copyText(positivePrompt)}>Copy</button>
+                <button style={btnStyle} onClick={() => void copyText(positivePrompt)}>{t.copy}</button>
               </Panel>
-              <Panel title="Negative prompt">
+              <Panel title={t.negativePrompt}>
                 <textarea readOnly value={negativePrompt} rows={4} style={textareaStyle} />
-                <button style={btnStyle} onClick={() => void copyText(negativePrompt)}>Copy</button>
+                <button style={btnStyle} onClick={() => void copyText(negativePrompt)}>{t.copy}</button>
               </Panel>
             </section>
 
-            <Panel title="Composer Presets">
+            <Panel title={t.composerPresets}>
               <form onSubmit={savePreset} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                <input style={inputStyle} value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="Preset name" />
-                <button style={btnStyle} type="submit">Save</button>
+                <input style={inputStyle} value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder={t.presetName} />
+                <button style={btnStyle} type="submit">{t.save}</button>
               </form>
               <div style={{ maxHeight: presets.length > 4 ? 260 : undefined, overflowY: presets.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
               {presets.map((preset) => (
                 <div key={preset.id} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
                   <strong>{preset.name}</strong>
-                  <button style={btnGhostStyle} onClick={() => loadPreset(preset)}>Load</button>
-                  <button style={btnGhostStyle} onClick={() => void deletePreset(preset.id)}>Delete</button>
+                  <button style={btnGhostStyle} onClick={() => loadPreset(preset)}>{t.load}</button>
+                  <button style={btnGhostStyle} onClick={() => void deletePreset(preset.id)}>{t.delete}</button>
                 </div>
               ))}
               </div>
@@ -957,17 +1049,17 @@ function App() {
         )}
 
         {activeTab === 'characters' && (
-          <Panel title="Character presets">
+          <Panel title={t.characterPresets}>
             <form onSubmit={saveCharacter} style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
-              <input style={inputStyle} value={characterName} onChange={(e) => setCharacterName(e.target.value)} placeholder="character name" />
-              <input style={inputStyle} value={characterDescription} onChange={(e) => setCharacterDescription(e.target.value)} placeholder="description" />
+              <input style={inputStyle} value={characterName} onChange={(e) => setCharacterName(e.target.value)} placeholder={t.characterName} />
+              <input style={inputStyle} value={characterDescription} onChange={(e) => setCharacterDescription(e.target.value)} placeholder={t.description} />
               <div style={{ display: 'grid', gridTemplateColumns: isNarrow ? '1fr' : '1fr 120px', gap: 8 }}>
-                <input style={inputStyle} value={characterVersionFamily} onChange={(e) => setCharacterVersionFamily(e.target.value)} placeholder="version family" />
+                <input style={inputStyle} value={characterVersionFamily} onChange={(e) => setCharacterVersionFamily(e.target.value)} placeholder={t.versionFamily} />
                 <input style={inputStyle} value={characterVersion} onChange={(e) => setCharacterVersion(e.target.value)} type="number" min={1} />
               </div>
-              <input style={inputStyle} value={characterRequiredSdxlBaseModel} onChange={(e) => setCharacterRequiredSdxlBaseModel(e.target.value)} placeholder="required SDXL base model" />
-              <input style={inputStyle} value={characterRecommendedSdxlBaseModel} onChange={(e) => setCharacterRecommendedSdxlBaseModel(e.target.value)} placeholder="recommended SDXL base model" />
-              <button style={btnStyle} type="submit">Save current composer as character</button>
+              <input style={inputStyle} value={characterRequiredSdxlBaseModel} onChange={(e) => setCharacterRequiredSdxlBaseModel(e.target.value)} placeholder={t.requiredSdxl} />
+              <input style={inputStyle} value={characterRecommendedSdxlBaseModel} onChange={(e) => setCharacterRecommendedSdxlBaseModel(e.target.value)} placeholder={t.recommendedSdxl} />
+              <button style={btnStyle} type="submit">{t.saveAsCharacter}</button>
             </form>
 
             <div style={{ maxHeight: characters.length > 4 ? 360 : undefined, overflowY: characters.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
@@ -975,7 +1067,7 @@ function App() {
               <div key={character.id} style={{ borderTop: `1px solid ${ui.border}`, padding: '10px 0' }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <strong>{character.name}</strong>
-                  <span style={{ color: ui.muted }}>family: {character.version_family || 'n/a'}</span>
+                  <span style={{ color: ui.muted }}>{t.family}: {character.version_family || t.na}</span>
                   <span style={{ color: ui.muted }}>v{character.version}</span>
                   {character.required_sdxl_base_model && <span style={{ color: ui.warn }}>Required SDXL: {character.required_sdxl_base_model}</span>}
                   {character.recommended_sdxl_base_model && <span style={{ color: ui.accent }}>Recommended SDXL: {character.recommended_sdxl_base_model}</span>}
@@ -983,9 +1075,9 @@ function App() {
                 </div>
                 {character.description && <p style={{ color: ui.muted }}>{character.description}</p>}
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button style={btnGhostStyle} onClick={() => loadCharacter(character)}>Load</button>
-                  <button style={btnGhostStyle} onClick={() => void duplicateCharacterVersion(character.id)}>Duplicate next version</button>
-                  <button style={btnGhostStyle} onClick={() => void deleteCharacter(character.id)}>Delete</button>
+                  <button style={btnGhostStyle} onClick={() => loadCharacter(character)}>{t.load}</button>
+                  <button style={btnGhostStyle} onClick={() => void duplicateCharacterVersion(character.id)}>{t.duplicateNextVersion}</button>
+                  <button style={btnGhostStyle} onClick={() => void deleteCharacter(character.id)}>{t.delete}</button>
                 </div>
               </div>
             ))}
@@ -1063,6 +1155,7 @@ function ComposerList({
   updatePart,
   movePart,
   removePart,
+  labels,
 }: {
   title: string
   items: ComposerItem[]
@@ -1070,16 +1163,17 @@ function ComposerList({
   updatePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number, patch: Partial<ComposerItem>) => void
   movePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number, dir: -1 | 1) => void
   removePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number) => void
+  labels: { noItemsYet: string, weight: string, category: string, uncategorized: string, important: string, recurring: string, requiredLora: string }
 }) {
   return (
     <Panel title={title}>
-      {items.length === 0 && <p style={{ color: ui.muted }}>No items yet</p>}
+      {items.length === 0 && <p style={{ color: ui.muted }}>{labels.noItemsYet}</p>}
       <div style={{ maxHeight: items.length > 4 ? 340 : undefined, overflowY: items.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
       {items.map((item, idx) => (
         <div key={item.id} style={{ border: `1px solid ${ui.border}`, borderRadius: 10, padding: 6, marginBottom: 6 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px auto', gap: 6, marginBottom: 6 }}>
             <input style={inputStyle} value={item.text} onChange={(e) => updatePart(setItems, idx, { text: e.target.value })} />
-            <input style={inputStyle} type="number" step="0.1" placeholder="weight" value={item.weight ?? ''} onChange={(e) => updatePart(setItems, idx, { weight: e.target.value ? Number(e.target.value) : undefined })} />
+            <input style={inputStyle} type="number" step="0.1" placeholder={labels.weight} value={item.weight ?? ''} onChange={(e) => updatePart(setItems, idx, { weight: e.target.value ? Number(e.target.value) : undefined })} />
             <div style={{ display: 'flex', gap: 4 }}>
               <button style={btnGhostStyle} onClick={() => movePart(setItems, idx, -1)}>↑</button>
               <button style={btnGhostStyle} onClick={() => movePart(setItems, idx, 1)}>↓</button>
@@ -1087,11 +1181,11 @@ function ComposerList({
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-            <span style={{ color: ui.muted }}>Category: {item.category || 'Uncategorized'}</span>
-            <label><input type="checkbox" checked={Boolean(item.isImportant)} onChange={(e) => updatePart(setItems, idx, { isImportant: e.target.checked })} /> important</label>
-            <label><input type="checkbox" checked={Boolean(item.isRecurring)} onChange={(e) => updatePart(setItems, idx, { isRecurring: e.target.checked })} /> recurring</label>
+            <span style={{ color: ui.muted }}>{labels.category}: {item.category || labels.uncategorized}</span>
+            <label><input type="checkbox" checked={Boolean(item.isImportant)} onChange={(e) => updatePart(setItems, idx, { isImportant: e.target.checked })} /> {labels.important}</label>
+            <label><input type="checkbox" checked={Boolean(item.isRecurring)} onChange={(e) => updatePart(setItems, idx, { isRecurring: e.target.checked })} /> {labels.recurring}</label>
           </div>
-          <input style={inputStyle} value={item.requiredLora ?? ''} onChange={(e) => updatePart(setItems, idx, { requiredLora: e.target.value || undefined })} placeholder="Required LoRA" />
+          <input style={inputStyle} value={item.requiredLora ?? ''} onChange={(e) => updatePart(setItems, idx, { requiredLora: e.target.value || undefined })} placeholder={labels.requiredLora} />
         </div>
       ))}
       </div>
