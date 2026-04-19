@@ -1,0 +1,38 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="32" y1="32" x2="480" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0E1A31"/>
+      <stop offset="1" stop-color="#08101F"/>
+    </linearGradient>
+    <linearGradient id="acc" x1="150" y1="120" x2="360" y2="340" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67D1FF"/>
+      <stop offset="1" stop-color="#4E8BFF"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="24" y="24" width="464" height="464" rx="120" fill="url(#bg)"/>
+
+  <path d="M198 150C192 120 202 96 222 84C236 108 236 134 230 160" fill="url(#acc)"/>
+  <path d="M314 150C320 120 310 96 290 84C276 108 276 134 282 160" fill="url(#acc)"/>
+
+  <g stroke="#5A97FF" stroke-width="6" fill="none">
+    <ellipse cx="256" cy="248" rx="96" ry="30"/>
+    <path d="M160 248V300C160 318 203 332 256 332C309 332 352 318 352 300V248"/>
+    <path d="M160 300V348C160 366 203 380 256 380C309 380 352 366 352 348V300"/>
+  </g>
+
+  <g fill="#7FD0FF">
+    <circle cx="202" cy="246" r="4"/>
+    <circle cx="256" cy="246" r="4"/>
+    <circle cx="310" cy="246" r="4"/>
+  </g>
+
+  <g stroke="#4D84FF" stroke-width="4" opacity="0.8">
+    <path d="M110 210H146"/>
+    <path d="M366 210H402"/>
+    <path d="M110 350H146"/>
+    <path d="M366 350H402"/>
+  </g>
+
+  <text x="256" y="426" text-anchor="middle" fill="#C4DBFF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="700" letter-spacing="1">PROMTDB</text>
+</svg>

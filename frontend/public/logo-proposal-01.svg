@@ -1,0 +1,36 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="40" x2="448" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1C2D52"/>
+      <stop offset="1" stop-color="#0B1324"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="156" y1="136" x2="356" y2="356" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7CC0FF"/>
+      <stop offset="1" stop-color="#4F8CFF"/>
+    </linearGradient>
+    <filter id="shadow" x="72" y="72" width="368" height="368" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect x="32" y="32" width="448" height="448" rx="108" fill="url(#bg)"/>
+
+  <g filter="url(#shadow)">
+    <circle cx="256" cy="272" r="120" fill="#0F1E39" stroke="#2A3E6A" stroke-width="8"/>
+
+    <!-- database stack -->
+    <ellipse cx="256" cy="238" rx="76" ry="22" fill="#13264A" stroke="#5A86D9" stroke-width="6"/>
+    <path d="M180 238V278C180 290 214 300 256 300C298 300 332 290 332 278V238" fill="#13264A" stroke="#5A86D9" stroke-width="6"/>
+    <path d="M180 278V318C180 330 214 340 256 340C298 340 332 330 332 318V278" fill="#13264A" stroke="#5A86D9" stroke-width="6"/>
+
+    <!-- rabbit ears -->
+    <path d="M218 154C212 124 220 102 238 90C250 112 250 138 246 164" fill="url(#accent)"/>
+    <path d="M294 154C300 124 292 102 274 90C262 112 262 138 266 164" fill="url(#accent)"/>
+
+    <!-- subtle prompt spark -->
+    <path d="M352 190L364 214L388 226L364 238L352 262L340 238L316 226L340 214L352 190Z" fill="#7CC0FF" fill-opacity="0.9"/>
+  </g>
+
+  <!-- wordmark hint -->
+  <text x="256" y="426" text-anchor="middle" fill="#AFC8FF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="34" font-weight="700" letter-spacing="0.5">promtdb</text>
+</svg>

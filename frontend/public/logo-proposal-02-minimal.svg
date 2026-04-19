@@ -1,0 +1,19 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111D36"/>
+      <stop offset="1" stop-color="#0A1222"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#g)"/>
+
+  <path d="M210 154C206 124 214 105 230 94C242 113 242 136 238 160" fill="#71B6FF"/>
+  <path d="M302 154C306 124 298 105 282 94C270 113 270 136 274 160" fill="#71B6FF"/>
+
+  <ellipse cx="256" cy="242" rx="88" ry="26" fill="#102346" stroke="#5A8FEF" stroke-width="8"/>
+  <path d="M168 242V300C168 314 208 326 256 326C304 326 344 314 344 300V242" fill="#102346" stroke="#5A8FEF" stroke-width="8"/>
+
+  <circle cx="256" cy="242" r="6" fill="#9CCBFF"/>
+
+  <text x="256" y="414" text-anchor="middle" fill="#BCD6FF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="700">promtdb</text>
+</svg>
