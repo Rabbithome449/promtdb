@@ -8,7 +8,6 @@ from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import func
 from sqlmodel import Session, select
 
 from .db import get_session, init_db
@@ -55,6 +54,16 @@ def infer_version_family(name: str) -> str:
 
 def normalize_name(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip().lower()
+
+
+def category_name_exists(session: Session, normalized_name: str, exclude_id: int | None = None) -> bool:
+    categories = session.exec(select(Category)).all()
+    for category in categories:
+        if exclude_id is not None and category.id == exclude_id:
+            continue
+        if normalize_name(category.name) == normalized_name:
+            return True
+    return False
 
 
 def _issue_token() -> str:
@@ -131,8 +140,7 @@ def create_category(payload: CategoryCreate, session: Session = Depends(get_sess
     if not normalized:
         raise HTTPException(status_code=400, detail="Category name is required")
 
-    existing = session.exec(select(Category).where(func.lower(Category.name) == normalized)).first()
-    if existing:
+    if category_name_exists(session, normalized):
         raise HTTPException(status_code=409, detail="Category already exists")
 
     item = Category(name=payload.name.strip(), sort_order=payload.sort_order)
@@ -153,10 +161,7 @@ def update_category(category_id: int, payload: CategoryUpdate, session: Session 
         normalized = normalize_name(data["name"])
         if not normalized:
             raise HTTPException(status_code=400, detail="Category name is required")
-        existing = session.exec(
-            select(Category).where(func.lower(Category.name) == normalized, Category.id != category_id)
-        ).first()
-        if existing:
+        if category_name_exists(session, normalized, exclude_id=category_id):
             raise HTTPException(status_code=409, detail="Category already exists")
         data["name"] = data["name"].strip()
 
