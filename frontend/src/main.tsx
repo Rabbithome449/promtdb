@@ -1188,11 +1188,10 @@ function App() {
               <form onSubmit={submitPhraseForm} style={{ display: 'grid', gap: 8 }}>
                 <select
                   style={inputStyle}
-                  value={effectivePhraseCategoryId ?? ''}
+                  value={phraseModalCategoryId ?? ''}
                   onChange={(e) => {
                     const nextId = e.target.value ? Number(e.target.value) : null
-                    setNewPhraseCategoryId(nextId)
-                    setLibrarySelectedCategoryId(nextId)
+                    setPhraseModalCategoryId(nextId)
                   }}
                 >
                   <option value="" disabled>
