@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from .db import get_session, init_db
@@ -50,6 +51,10 @@ app.add_middleware(
 def infer_version_family(name: str) -> str:
     clean = name.strip().lower().replace(" ", "_")
     return re.sub(r"_v\d+$", "", clean)
+
+
+def normalize_name(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip().lower()
 
 
 def _issue_token() -> str:
@@ -122,6 +127,14 @@ def list_categories(session: Session = Depends(get_session)):
 
 @app.post("/categories", response_model=Category)
 def create_category(payload: CategoryCreate, session: Session = Depends(get_session)):
+    normalized = normalize_name(payload.name)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Category name is required")
+
+    existing = session.exec(select(Category).where(func.lower(Category.name) == normalized)).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Category already exists")
+
     item = Category(name=payload.name.strip(), sort_order=payload.sort_order)
     session.add(item)
     session.commit()
@@ -137,6 +150,14 @@ def update_category(category_id: int, payload: CategoryUpdate, session: Session 
 
     data = payload.model_dump(exclude_unset=True)
     if "name" in data and data["name"] is not None:
+        normalized = normalize_name(data["name"])
+        if not normalized:
+            raise HTTPException(status_code=400, detail="Category name is required")
+        existing = session.exec(
+            select(Category).where(func.lower(Category.name) == normalized, Category.id != category_id)
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Category already exists")
         data["name"] = data["name"].strip()
 
     for key, value in data.items():

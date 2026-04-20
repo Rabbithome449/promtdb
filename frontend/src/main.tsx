@@ -496,13 +496,27 @@ function App() {
 
   async function createCategory(e: React.FormEvent) {
     e.preventDefault()
-    if (!newCategoryName.trim()) return
-    await api<Category>('/categories', {
-      method: 'POST',
-      body: JSON.stringify({ name: newCategoryName.trim(), sort_order: categories.length }),
-    })
-    setNewCategoryName('')
-    await loadAll()
+    const nextName = newCategoryName.trim()
+    if (!nextName) return
+
+    const normalized = normalizeText(nextName)
+    const duplicateExists = categories.some((c) => normalizeText(c.name) === normalized)
+    if (duplicateExists) {
+      setError('Category already exists')
+      return
+    }
+
+    try {
+      await api<Category>('/categories', {
+        method: 'POST',
+        body: JSON.stringify({ name: nextName, sort_order: categories.length }),
+      })
+      setNewCategoryName('')
+      await loadAll()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Category create failed'
+      setError(msg.includes('already exists') ? 'Category already exists' : msg)
+    }
   }
 
   async function renameCategory(id: number, name: string) {
