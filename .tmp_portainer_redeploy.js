@@ -1,5 +1,9 @@
 const fs=require('fs');
 
+const args=process.argv.slice(2);
+const branchArgIndex=args.findIndex((a)=>a==='--branch' || a==='-b');
+const branch=branchArgIndex>=0 ? (args[branchArgIndex+1]||'').trim() : '';
+
 function loadEnv(path){
   const vals={};
   const text=fs.readFileSync(path,'utf8');
@@ -65,10 +69,13 @@ async function j(path, opts={}){
   if(candidates.length===0) throw new Error('No stack with name containing promtdb/promptdb found');
   const target=candidates[0];
 
+  const payload={};
+  if(branch) payload.repositoryReferenceName=branch;
+
   await j(`/api/stacks/${target.stack.Id}/git/redeploy?endpointId=${target.endpointId}`,{
     method:'PUT',
     headers:{...headers, 'Content-Type':'application/json'},
-    body: JSON.stringify({}),
+    body: JSON.stringify(payload),
   });
 
   const details=await j(`/api/stacks/${target.stack.Id}?endpointId=${target.endpointId}`,{headers});
@@ -76,6 +83,7 @@ async function j(path, opts={}){
   console.log(JSON.stringify({
     ok:true,
     stack:{ id:target.stack.Id, name:target.stack.Name, endpointId:target.endpointId },
+    requestedBranch: branch || null,
     status: details.Status,
     autoUpdate: details.AutoUpdate,
     updatedAt: details.UpdatedAt,
