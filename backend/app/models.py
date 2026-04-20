@@ -58,6 +58,15 @@ class CharacterPreset(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=now_utc)
 
 
+class ComposerPack(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, min_length=1)
+    positive_parts: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    negative_parts: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=now_utc)
+    updated_at: datetime = Field(default_factory=now_utc)
+
+
 class CategoryCreate(SQLModel):
     name: str
     sort_order: int = 0
@@ -114,6 +123,18 @@ class PromptPresetCreate(SQLModel):
 
 
 class PromptPresetUpdate(SQLModel):
+    name: Optional[str] = None
+    positive_parts: Optional[list[PromptPart]] = None
+    negative_parts: Optional[list[PromptPart]] = None
+
+
+class ComposerPackCreate(SQLModel):
+    name: str
+    positive_parts: list[PromptPart] = Field(default_factory=list)
+    negative_parts: list[PromptPart] = Field(default_factory=list)
+
+
+class ComposerPackUpdate(SQLModel):
     name: Optional[str] = None
     positive_parts: Optional[list[PromptPart]] = None
     negative_parts: Optional[list[PromptPart]] = None
