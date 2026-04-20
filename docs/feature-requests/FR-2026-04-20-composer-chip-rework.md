@@ -2,8 +2,9 @@
 
 - **Date:** 2026-04-20
 - **Requested by:** Product/User feedback
-- **Status:** Proposed
+- **Status:** Implemented
 - **Priority:** Medium
+- **Completed on:** 2026-04-20
 - **Area:** Composer UI (Positive/Negative phrase lists)
 
 ## Summary
