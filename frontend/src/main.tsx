@@ -143,6 +143,8 @@ function App() {
   const [newPhraseWeight, setNewPhraseWeight] = useState('')
   const [newPhraseNotes, setNewPhraseNotes] = useState('')
   const [newPhraseRequiredLora, setNewPhraseRequiredLora] = useState('')
+  const [importPromptText, setImportPromptText] = useState('')
+  const [importingPrompt, setImportingPrompt] = useState(false)
   const [isPhraseModalOpen, setIsPhraseModalOpen] = useState(false)
   const [editingPhraseId, setEditingPhraseId] = useState<number | null>(null)
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
@@ -533,6 +535,69 @@ function App() {
     setEditingPhraseId(null)
   }
 
+  function splitPromptParts(input: string) {
+    const parts: string[] = []
+    let current = ''
+    let depth = 0
+    for (const ch of input) {
+      if (ch === '(') depth += 1
+      if (ch === ')') depth = Math.max(0, depth - 1)
+      if (ch === ',' && depth === 0) {
+        parts.push(current)
+        current = ''
+        continue
+      }
+      current += ch
+    }
+    if (current.trim()) parts.push(current)
+    return parts
+  }
+
+  function parsePromptPhrase(raw: string) {
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+    const weighted = trimmed.match(/^\((.+):\s*[-+]?\d*\.?\d+\)$/)
+    if (weighted) return { text: weighted[1].trim(), hasWeight: true }
+    return { text: trimmed, hasWeight: false }
+  }
+
+  async function importPromptPhrases(e: React.FormEvent) {
+    e.preventDefault()
+    if (!effectivePhraseCategoryId || !importPromptText.trim()) return
+    setImportingPrompt(true)
+    try {
+      const existing = new Set(phrases.map((p) => normalizeText(p.text)).filter(Boolean))
+      const seenNew = new Set<string>()
+      const parsed = splitPromptParts(importPromptText)
+        .map(parsePromptPhrase)
+        .filter((v): v is { text: string, hasWeight: boolean } => Boolean(v))
+
+      let nextSortOrder = phrasesInEffectivePhraseCategory.length
+      for (const item of parsed) {
+        const key = normalizeText(item.text)
+        if (!key || existing.has(key) || seenNew.has(key)) continue
+        seenNew.add(key)
+        await api<Phrase>('/phrases', {
+          method: 'POST',
+          body: JSON.stringify({
+            category_id: effectivePhraseCategoryId,
+            text: item.text,
+            default_weight: item.hasWeight ? 1 : null,
+            is_negative_default: false,
+            notes: null,
+            required_lora: null,
+            sort_order: nextSortOrder,
+          }),
+        })
+        nextSortOrder += 1
+      }
+      setImportPromptText('')
+      await loadAll()
+    } finally {
+      setImportingPrompt(false)
+    }
+  }
+
   async function submitPhraseForm(e: React.FormEvent) {
     e.preventDefault()
     if (!effectivePhraseCategoryId || !newPhraseText.trim()) return
@@ -900,6 +965,20 @@ function App() {
                 </select>
                 <button style={btnStyle} type="button" disabled={!effectivePhraseCategoryId} onClick={openCreatePhraseModal}>{t.newPhrase}</button>
               </div>
+
+              <form onSubmit={importPromptPhrases} style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+                <textarea
+                  style={textareaStyle}
+                  rows={4}
+                  value={importPromptText}
+                  onChange={(e) => setImportPromptText(e.target.value)}
+                  placeholder={language === 'de' ? 'Prompt hier einfügen, Phrasen werden automatisch angelegt' : 'Paste prompt here, phrases will be created automatically'}
+                />
+                <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId || !importPromptText.trim() || importingPrompt}>
+                  {importingPrompt ? (language === 'de' ? 'Import läuft...' : 'Importing...') : (language === 'de' ? 'Prompt importieren' : 'Import prompt')}
+                </button>
+              </form>
+
               <h4 style={{ margin: '8px 0', color: ui.muted }}>{t.inSelectedCategory} ({libraryCategoryPhrases.length})</h4>
               <div style={{ maxHeight: libraryCategoryPhrases.length > 4 ? 320 : undefined, overflowY: libraryCategoryPhrases.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
               {libraryCategoryPhrases.map((p) => (
