@@ -1378,7 +1378,10 @@ function App() {
                     type="button"
                     disabled={selectedPackId === null}
                     onClick={() => {
-                      if (selectedPackId !== null) addPackById(selectedPackId)
+                      if (selectedPackId !== null) {
+                        addPackById(selectedPackId)
+                        setSelectedPackId(null)
+                      }
                     }}
                   >
                     Add pack
