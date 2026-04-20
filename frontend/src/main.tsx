@@ -1276,7 +1276,6 @@ function App() {
                     }}
                   >
                     <strong style={{ flex: 1, textAlign: 'left' }}>{p.text}</strong>
-                    {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
                     <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => openEditPhraseModal(p)} title="Edit">✏️</button>
                     <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => removePhrase(p.id)} title="Delete">✕</button>
                   </div>
