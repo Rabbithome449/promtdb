@@ -36,6 +36,13 @@ type Preset = {
   negative_parts: PromptPart[]
 }
 
+type Pack = {
+  id: number
+  name: string
+  positive_parts: PromptPart[]
+  negative_parts: PromptPart[]
+}
+
 type CharacterPreset = {
   id: number
   name: string
@@ -99,6 +106,21 @@ function dedupeParts(parts: ComposerItem[]) {
   return next
 }
 
+function mergePartsReplace(existing: ComposerItem[], incoming: ComposerItem[]) {
+  const map = new Map<string, ComposerItem>()
+  for (const part of existing) {
+    const key = normalizeText(part.text)
+    if (!key) continue
+    map.set(key, { ...part, text: part.text.trim() })
+  }
+  for (const part of incoming) {
+    const key = normalizeText(part.text)
+    if (!key) continue
+    map.set(key, { ...part, text: part.text.trim() })
+  }
+  return [...map.values()]
+}
+
 function toPrompt(parts: ComposerItem[]) {
   return parts.map((p) => (p.weight === undefined ? p.text : `(${p.text}:${p.weight})`)).join(', ')
 }
@@ -132,6 +154,7 @@ function App() {
   const [categories, setCategories] = useState<Category[]>([])
   const [phrases, setPhrases] = useState<Phrase[]>([])
   const [presets, setPresets] = useState<Preset[]>([])
+  const [packs, setPacks] = useState<Pack[]>([])
   const [characters, setCharacters] = useState<CharacterPreset[]>([])
 
   const [librarySelectedCategoryId, setLibrarySelectedCategoryId] = useState<number | null>(null)
@@ -323,6 +346,8 @@ function App() {
   const t = i18n[language]
 
   const [presetName, setPresetName] = useState('')
+  const [packName, setPackName] = useState('')
+  const [selectedPackId, setSelectedPackId] = useState<number | null>(null)
   const [characterName, setCharacterName] = useState('')
   const [characterVersionFamily, setCharacterVersionFamily] = useState('')
   const [characterVersion, setCharacterVersion] = useState('1')
@@ -445,19 +470,36 @@ function App() {
   const positivePrompt = useMemo(() => toPrompt(sortedPositiveParts), [sortedPositiveParts])
   const negativePrompt = useMemo(() => toPrompt(sortedNegativeParts), [sortedNegativeParts])
 
+  const packCoverage = useMemo(() => {
+    const toKey = (part: PromptPart) => `${normalizeText(part.text)}::${part.weight ?? ''}`
+    const activePositive = new Set(positiveParts.map((p) => `${normalizeText(p.text)}::${p.weight ?? ''}`))
+    const activeNegative = new Set(negativeParts.map((p) => `${normalizeText(p.text)}::${p.weight ?? ''}`))
+    return packs.map((pack) => {
+      const posKeys = pack.positive_parts.map(toKey)
+      const negKeys = pack.negative_parts.map(toKey)
+      const all = [...posKeys.map((k) => `p:${k}`), ...negKeys.map((k) => `n:${k}`)]
+      const covered = all.filter((k) => (k.startsWith('p:') ? activePositive.has(k.slice(2)) : activeNegative.has(k.slice(2)))).length
+      const total = all.length
+      const percent = total === 0 ? 100 : Math.round((covered / total) * 100)
+      return { pack, covered, total, percent, complete: total > 0 && covered === total }
+    })
+  }, [packs, positiveParts, negativeParts])
+
   async function loadAll() {
     setLoading(true)
     setError(null)
     try {
-      const [c, p, pr, ch] = await Promise.all([
+      const [c, p, pr, pa, ch] = await Promise.all([
         api<Category[]>('/categories'),
         api<Phrase[]>('/phrases'),
         api<Preset[]>('/presets'),
+        api<Pack[]>('/packs'),
         api<CharacterPreset[]>('/characters'),
       ])
       setCategories(c)
       setPhrases(p)
       setPresets(pr)
+      setPacks(pa)
       setCharacters(ch)
       if (librarySelectedCategoryId === null && c.length > 0) setLibrarySelectedCategoryId(c[0].id)
       if (composerSelectedCategoryId === null && c.length > 0) setComposerSelectedCategoryId(c[0].id)
@@ -807,6 +849,56 @@ function App() {
   async function copyText(text: string) {
     if (!text) return
     await navigator.clipboard.writeText(text)
+  }
+
+  function partToComposerItem(part: PromptPart, prefix: string, idx: number): ComposerItem {
+    return {
+      id: `${prefix}-${idx}-${Date.now()}-${Math.random()}`,
+      text: part.text,
+      weight: part.weight ?? 1,
+      category: part.category,
+      isImportant: part.is_important,
+      isRecurring: part.is_recurring,
+      requiredLora: part.required_lora,
+    }
+  }
+
+  async function savePack(e: React.FormEvent) {
+    e.preventDefault()
+    if (!packName.trim()) return
+    await api('/packs', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: packName.trim(),
+        positive_parts: positiveParts.map((p) => ({ text: p.text, weight: p.weight ?? 1, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
+        negative_parts: negativeParts.map((p) => ({ text: p.text, weight: p.weight ?? 1, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
+      }),
+    })
+    setPackName('')
+    await loadAll()
+  }
+
+  function addPackById(packId: number) {
+    const pack = packs.find((p) => p.id === packId)
+    if (!pack) return
+    setPositiveParts((curr) => mergePartsReplace(curr, pack.positive_parts.map((part, idx) => partToComposerItem(part, `pack-pos-${pack.id}`, idx))))
+    setNegativeParts((curr) => mergePartsReplace(curr, pack.negative_parts.map((part, idx) => partToComposerItem(part, `pack-neg-${pack.id}`, idx))))
+  }
+
+  function removePackContribution(packId: number) {
+    const pack = packs.find((p) => p.id === packId)
+    if (!pack) return
+    const positiveKeys = new Set(pack.positive_parts.map((part) => normalizeText(part.text)).filter(Boolean))
+    const negativeKeys = new Set(pack.negative_parts.map((part) => normalizeText(part.text)).filter(Boolean))
+    setPositiveParts((curr) => curr.filter((item) => !positiveKeys.has(normalizeText(item.text))))
+    setNegativeParts((curr) => curr.filter((item) => !negativeKeys.has(normalizeText(item.text))))
+  }
+
+  async function deletePack(id: number) {
+    if (!window.confirm('Delete pack?')) return
+    await api(`/packs/${id}`, { method: 'DELETE' })
+    if (selectedPackId === id) setSelectedPackId(null)
+    await loadAll()
   }
 
   async function savePreset(e: React.FormEvent) {
@@ -1216,6 +1308,86 @@ function App() {
                 <ComposerList title={t.negative} items={negativeParts} setItems={setNegativeParts} labels={{ noItemsYet: t.noItemsYet }} />
               </div>
             </section>
+
+            <Panel title="Composer Packs">
+              <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+                <form onSubmit={savePack} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input
+                    style={inputStyle}
+                    value={packName}
+                    onChange={(e) => setPackName(e.target.value)}
+                    placeholder="Pack name"
+                  />
+                  <button style={btnStyle} type="submit">Save current as pack</button>
+                </form>
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <select
+                    style={inputStyle}
+                    value={selectedPackId ?? ''}
+                    onChange={(e) => setSelectedPackId(e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">Select pack</option>
+                    {packs.map((pack) => (
+                      <option key={pack.id} value={pack.id}>{pack.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    style={btnStyle}
+                    type="button"
+                    disabled={selectedPackId === null}
+                    onClick={() => {
+                      if (selectedPackId !== null) addPackById(selectedPackId)
+                    }}
+                  >
+                    Add pack
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {packCoverage.map(({ pack, percent, complete }) => (
+                    <div
+                      key={pack.id}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        border: `1px solid ${complete ? ui.ok : ui.border}`,
+                        borderRadius: 999,
+                        padding: '6px 10px',
+                        background: ui.panel2,
+                      }}
+                    >
+                      <button
+                        style={{ ...btnGhostStyle, border: 'none', padding: 0, background: 'transparent' }}
+                        type="button"
+                        onClick={() => addPackById(pack.id)}
+                        title="Add missing phrases from this pack"
+                      >
+                        {complete ? '✅' : '🧩'} {pack.name} ({percent}%)
+                      </button>
+                      <button
+                        style={{ ...btnGhostStyle, borderRadius: 999, padding: '2px 6px' }}
+                        type="button"
+                        onClick={() => removePackContribution(pack.id)}
+                        title="Remove this pack from composer"
+                      >
+                        ✕
+                      </button>
+                      <button
+                        style={{ ...btnGhostStyle, borderRadius: 999, padding: '2px 6px' }}
+                        type="button"
+                        onClick={() => void deletePack(pack.id)}
+                        title="Delete saved pack"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                  {packs.length === 0 && <span style={{ color: ui.muted }}>No packs yet.</span>}
+                </div>
+              </div>
+            </Panel>
 
             <Panel title={t.promptInspector}>
               <p style={{ marginTop: 0 }}>{t.qualityScore}: <strong>{promptHealth.score}/100</strong> {promptHealth.score >= 85 ? '🟢' : promptHealth.score >= 60 ? '🟡' : '🔴'}</p>

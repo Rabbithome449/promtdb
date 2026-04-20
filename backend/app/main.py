@@ -18,6 +18,9 @@ from .models import (
     CharacterPreset,
     CharacterPresetCreate,
     CharacterPresetUpdate,
+    ComposerPack,
+    ComposerPackCreate,
+    ComposerPackUpdate,
     ComposeRequest,
     ComposeResponse,
     Phrase,
@@ -319,6 +322,65 @@ def delete_preset(preset_id: int, session: Session = Depends(get_session)):
     item = session.get(PromptPreset, preset_id)
     if not item:
         raise HTTPException(status_code=404, detail="Preset not found")
+    session.delete(item)
+    session.commit()
+    return {"ok": True}
+
+
+@app.get("/packs", response_model=list[ComposerPack])
+def list_packs(session: Session = Depends(get_session)):
+    return session.exec(select(ComposerPack).order_by(ComposerPack.id.desc())).all()
+
+
+@app.post("/packs", response_model=ComposerPack)
+def create_pack(payload: ComposerPackCreate, session: Session = Depends(get_session)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Pack name is required")
+
+    item = ComposerPack(
+        name=name,
+        positive_parts=[part.model_dump() for part in payload.positive_parts],
+        negative_parts=[part.model_dump() for part in payload.negative_parts],
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+
+@app.patch("/packs/{pack_id}", response_model=ComposerPack)
+def update_pack(pack_id: int, payload: ComposerPackUpdate, session: Session = Depends(get_session)):
+    item = session.get(ComposerPack, pack_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Pack not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] is not None:
+        data["name"] = data["name"].strip()
+        if not data["name"]:
+            raise HTTPException(status_code=400, detail="Pack name is required")
+
+    if "positive_parts" in data and data["positive_parts"] is not None:
+        data["positive_parts"] = [part.model_dump() for part in data["positive_parts"]]
+
+    if "negative_parts" in data and data["negative_parts"] is not None:
+        data["negative_parts"] = [part.model_dump() for part in data["negative_parts"]]
+
+    for key, value in data.items():
+        setattr(item, key, value)
+    item.updated_at = datetime.now(timezone.utc)
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+
+@app.delete("/packs/{pack_id}")
+def delete_pack(pack_id: int, session: Session = Depends(get_session)):
+    item = session.get(ComposerPack, pack_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Pack not found")
     session.delete(item)
     session.commit()
     return {"ok": True}
