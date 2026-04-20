@@ -151,6 +151,9 @@ function App() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
   const [pendingDeleteCategoryId, setPendingDeleteCategoryId] = useState<number | null>(null)
+  const [showImportedCategory, setShowImportedCategory] = useState(false)
+  const [draggingCategoryId, setDraggingCategoryId] = useState<number | null>(null)
+  const [draggingLibraryPhraseId, setDraggingLibraryPhraseId] = useState<number | null>(null)
   const [chipMenuPhraseId, setChipMenuPhraseId] = useState<number | null>(null)
   const [draggingPhraseId, setDraggingPhraseId] = useState<number | null>(null)
 
@@ -420,6 +423,16 @@ function App() {
   const phrasesInEffectivePhraseCategory = useMemo(
     () => phrases.filter((p) => p.category_id === effectivePhraseCategoryId),
     [phrases, effectivePhraseCategoryId],
+  )
+  const importedCategoryId = useMemo(
+    () => categories.find((c) => normalizeText(c.name) === 'imported')?.id ?? null,
+    [categories],
+  )
+  const visibleLibraryCategories = useMemo(
+    () => showImportedCategory || importedCategoryId === null
+      ? categories
+      : categories.filter((c) => c.id !== importedCategoryId),
+    [categories, showImportedCategory, importedCategoryId],
   )
   const phraseCountByCategoryId = useMemo(() => {
     const counts = new Map<number, number>()
@@ -717,6 +730,53 @@ function App() {
     setEditingCategoryName('')
   }
 
+  async function reorderCategories(sourceId: number, targetId: number) {
+    if (sourceId === targetId) return
+    const currentVisible = [...visibleLibraryCategories]
+    const from = currentVisible.findIndex((c) => c.id === sourceId)
+    const to = currentVisible.findIndex((c) => c.id === targetId)
+    if (from === -1 || to === -1) return
+
+    const nextVisible = [...currentVisible]
+    const [moved] = nextVisible.splice(from, 1)
+    nextVisible.splice(to, 0, moved)
+
+    const visibleIds = new Set(nextVisible.map((c) => c.id))
+    const hidden = categories.filter((c) => !visibleIds.has(c.id))
+    const nextAll = [...nextVisible, ...hidden]
+
+    setCategories(nextAll.map((c, idx) => ({ ...c, sort_order: idx })))
+
+    await Promise.all(nextAll.map((c, idx) => api(`/categories/${c.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sort_order: idx }),
+    })))
+    await loadAll()
+  }
+
+  async function reorderLibraryPhrases(sourceId: number, targetId: number) {
+    if (!librarySelectedCategoryId || sourceId === targetId) return
+    const current = [...libraryCategoryPhrases]
+    const from = current.findIndex((p) => p.id === sourceId)
+    const to = current.findIndex((p) => p.id === targetId)
+    if (from === -1 || to === -1) return
+
+    const reordered = [...current]
+    const [moved] = reordered.splice(from, 1)
+    reordered.splice(to, 0, moved)
+
+    const reorderedIds = new Set(reordered.map((p) => p.id))
+    const others = phrases.filter((p) => !reorderedIds.has(p.id))
+    const next = [...others, ...reordered.map((p, idx) => ({ ...p, sort_order: idx }))]
+    setPhrases(next)
+
+    await Promise.all(reordered.map((p, idx) => api(`/phrases/${p.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sort_order: idx }),
+    })))
+    await loadAll()
+  }
+
   function getPhraseById(id: number | null) {
     if (id === null) return null
     return phrases.find((p) => p.id === id) ?? null
@@ -951,10 +1011,25 @@ function App() {
                 <input style={inputStyle} value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder={t.newCategory} />
                 <button style={btnStyle} type="submit">{t.add}</button>
               </form>
-              <div style={{ maxHeight: categories.length > 4 ? 260 : undefined, overflowY: categories.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
-              {categories.map((c) => (
+              {importedCategoryId !== null && (
+                <div style={{ marginBottom: 8 }}>
+                  <button style={btnGhostStyle} onClick={() => setShowImportedCategory((curr) => !curr)}>
+                    {showImportedCategory ? 'Hide imported' : 'Show imported'}
+                  </button>
+                </div>
+              )}
+              <div style={{ maxHeight: 'min(52vh, calc(100vh - 300px))', overflowY: 'auto', paddingRight: 4 }}>
+              {visibleLibraryCategories.map((c) => (
                 <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                   <div
+                    draggable={editingCategoryId !== c.id}
+                    onDragStart={() => setDraggingCategoryId(c.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (draggingCategoryId !== null) void reorderCategories(draggingCategoryId, c.id)
+                      setDraggingCategoryId(null)
+                    }}
+                    onDragEnd={() => setDraggingCategoryId(null)}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -964,6 +1039,7 @@ function App() {
                       borderRadius: 999,
                       padding: '6px 10px',
                       width: '100%',
+                      boxShadow: draggingCategoryId === c.id ? `0 0 0 2px ${ui.accent}` : 'none',
                     }}
                   >
                     {editingCategoryId === c.id ? (
@@ -1002,7 +1078,7 @@ function App() {
               </div>
             </Panel>
 
-            <Panel title={`${t.phrases} ${librarySelectedCategoryId ? '' : `(${t.selectCategory})`}`}>
+            <Panel title="">
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select
                   style={inputStyle}
@@ -1037,16 +1113,34 @@ function App() {
                 </button>
               </form>
 
-              <h4 style={{ margin: '8px 0', color: ui.muted }}>{t.inSelectedCategory} ({libraryCategoryPhrases.length})</h4>
-              <div style={{ maxHeight: libraryCategoryPhrases.length > 4 ? 320 : undefined, overflowY: libraryCategoryPhrases.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
+              <div style={{ maxHeight: 'min(52vh, calc(100vh - 300px))', overflowY: 'auto', paddingRight: 4 }}>
               {libraryCategoryPhrases.map((p) => (
-                <div key={`cat-${p.id}`} style={{ borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <strong>{p.text}</strong>
+                <div key={`cat-${p.id}`} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <div
+                    draggable
+                    onDragStart={() => setDraggingLibraryPhraseId(p.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (draggingLibraryPhraseId !== null) void reorderLibraryPhrases(draggingLibraryPhraseId, p.id)
+                      setDraggingLibraryPhraseId(null)
+                    }}
+                    onDragEnd={() => setDraggingLibraryPhraseId(null)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      border: `1px solid ${ui.border}`,
+                      background: ui.panel,
+                      borderRadius: 999,
+                      padding: '6px 10px',
+                      width: '100%',
+                      boxShadow: draggingLibraryPhraseId === p.id ? `0 0 0 2px ${ui.accent}` : 'none',
+                    }}
+                  >
+                    <strong style={{ flex: 1, textAlign: 'left' }}>{p.text}</strong>
                     {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
-                    {p.required_lora && <span style={{ color: ui.ok }}>LoRA: {p.required_lora}</span>}
-                    <button style={btnGhostStyle} onClick={() => openEditPhraseModal(p)} title="Edit">✏️</button>
-                    <button style={btnGhostStyle} onClick={() => removePhrase(p.id)} title="Delete">🗑️</button>
+                    <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => openEditPhraseModal(p)} title="Edit">✏️</button>
+                    <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => removePhrase(p.id)} title="Delete">✕</button>
                   </div>
                 </div>
               ))}
@@ -1281,7 +1375,7 @@ function App() {
 function Panel({ title, children }: { title: string, children: React.ReactNode }) {
   return (
     <section style={{ background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 14, padding: 14, boxShadow: ui.shadow }}>
-      <h3 style={{ margin: '0 0 10px 0', fontSize: 17 }}>{title}</h3>
+      {title ? <h3 style={{ margin: '0 0 10px 0', fontSize: 17 }}>{title}</h3> : null}
       {children}
     </section>
   )
