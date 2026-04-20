@@ -151,7 +151,6 @@ function App() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
   const [pendingDeleteCategoryId, setPendingDeleteCategoryId] = useState<number | null>(null)
-  const [showImportedCategory, setShowImportedCategory] = useState(false)
   const [draggingCategoryId, setDraggingCategoryId] = useState<number | null>(null)
   const [draggingLibraryPhraseId, setDraggingLibraryPhraseId] = useState<number | null>(null)
   const [chipMenuPhraseId, setChipMenuPhraseId] = useState<number | null>(null)
@@ -429,10 +428,8 @@ function App() {
     [categories],
   )
   const visibleLibraryCategories = useMemo(
-    () => showImportedCategory || importedCategoryId === null
-      ? categories
-      : categories.filter((c) => c.id !== importedCategoryId),
-    [categories, showImportedCategory, importedCategoryId],
+    () => categories.filter((c) => c.id !== importedCategoryId),
+    [categories, importedCategoryId],
   )
   const phraseCountByCategoryId = useMemo(() => {
     const counts = new Map<number, number>()
@@ -1013,8 +1010,11 @@ function App() {
               </form>
               {importedCategoryId !== null && (
                 <div style={{ marginBottom: 8 }}>
-                  <button style={btnGhostStyle} onClick={() => setShowImportedCategory((curr) => !curr)}>
-                    {showImportedCategory ? 'Hide imported' : 'Show imported'}
+                  <button
+                    style={btnGhostStyle}
+                    onClick={() => setLibrarySelectedCategoryId(importedCategoryId)}
+                  >
+                    Show imported ({phraseCountByCategoryId.get(importedCategoryId) ?? 0})
                   </button>
                 </div>
               )}
