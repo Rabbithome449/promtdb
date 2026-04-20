@@ -52,6 +52,20 @@ def infer_version_family(name: str) -> str:
     return re.sub(r"_v\d+$", "", clean)
 
 
+def normalize_name(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip().lower()
+
+
+def category_name_exists(session: Session, normalized_name: str, exclude_id: int | None = None) -> bool:
+    categories = session.exec(select(Category)).all()
+    for category in categories:
+        if exclude_id is not None and category.id == exclude_id:
+            continue
+        if normalize_name(category.name) == normalized_name:
+            return True
+    return False
+
+
 def _issue_token() -> str:
     token = secrets.token_urlsafe(32)
     _TOKENS[token] = datetime.now(timezone.utc) + timedelta(hours=AUTH_TOKEN_TTL_HOURS)
@@ -122,6 +136,13 @@ def list_categories(session: Session = Depends(get_session)):
 
 @app.post("/categories", response_model=Category)
 def create_category(payload: CategoryCreate, session: Session = Depends(get_session)):
+    normalized = normalize_name(payload.name)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Category name is required")
+
+    if category_name_exists(session, normalized):
+        raise HTTPException(status_code=409, detail="Category already exists")
+
     item = Category(name=payload.name.strip(), sort_order=payload.sort_order)
     session.add(item)
     session.commit()
@@ -137,6 +158,11 @@ def update_category(category_id: int, payload: CategoryUpdate, session: Session 
 
     data = payload.model_dump(exclude_unset=True)
     if "name" in data and data["name"] is not None:
+        normalized = normalize_name(data["name"])
+        if not normalized:
+            raise HTTPException(status_code=400, detail="Category name is required")
+        if category_name_exists(session, normalized, exclude_id=category_id):
+            raise HTTPException(status_code=409, detail="Category already exists")
         data["name"] = data["name"].strip()
 
     for key, value in data.items():
