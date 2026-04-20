@@ -178,6 +178,7 @@ function App() {
   const [draggingLibraryPhraseId, setDraggingLibraryPhraseId] = useState<number | null>(null)
   const [chipMenuPhraseId, setChipMenuPhraseId] = useState<number | null>(null)
   const [draggingPhraseId, setDraggingPhraseId] = useState<number | null>(null)
+  const [composerViewTab, setComposerViewTab] = useState<'build' | 'structured' | 'output'>('build')
 
   const i18n = {
     de: {
@@ -628,8 +629,8 @@ function App() {
     let current = ''
     let depth = 0
     for (const ch of input) {
-      if (ch === '(') depth += 1
-      if (ch === ')') depth = Math.max(0, depth - 1)
+      if (ch === '(' || ch === '[') depth += 1
+      if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1)
       if (ch === ',' && depth === 0) {
         parts.push(current)
         current = ''
@@ -644,9 +645,33 @@ function App() {
   function parsePromptPhrase(raw: string) {
     const trimmed = raw.trim()
     if (!trimmed) return null
-    const weighted = trimmed.match(/^\((.+):\s*[-+]?\d*\.?\d+\)$/)
-    if (weighted) return { text: weighted[1].trim(), hasWeight: true }
-    return { text: trimmed, hasWeight: false }
+
+    let next = trimmed
+    let hasWeight = false
+
+    next = next.replace(/\[[^\]]*\]/g, ' ').trim()
+    if (!next) return null
+
+    const wrappedWeighted = next.match(/^\((.+):\s*[-+]?\d*\.?\d+\)$/)
+    if (wrappedWeighted) {
+      next = wrappedWeighted[1].trim()
+      hasWeight = true
+    }
+
+    const plainWeighted = next.match(/^(.+):\s*[-+]?\d*\.?\d+$/)
+    if (plainWeighted) {
+      next = plainWeighted[1].trim()
+      hasWeight = true
+    }
+
+    while ((next.startsWith('(') && next.endsWith(')')) || (next.startsWith('{') && next.endsWith('}'))) {
+      next = next.slice(1, -1).trim()
+    }
+
+    next = next.replace(/\s+/g, ' ').trim()
+    if (!next) return null
+
+    return { text: next, hasWeight }
   }
 
   async function importPromptPhrases(e: React.FormEvent) {
@@ -1252,7 +1277,6 @@ function App() {
                     }}
                   >
                     <strong style={{ flex: 1, textAlign: 'left' }}>{p.text}</strong>
-                    {p.default_weight !== null && <span style={{ color: ui.muted }}>({p.default_weight})</span>}
                     <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => openEditPhraseModal(p)} title="Edit">✏️</button>
                     <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => removePhrase(p.id)} title="Delete">✕</button>
                   </div>
@@ -1267,6 +1291,30 @@ function App() {
 
         {activeTab === 'composer' && (
           <>
+            <Panel title={t.composerPresets}>
+              <form onSubmit={savePreset} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                <input style={inputStyle} value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder={t.presetName} />
+                <button style={btnStyle} type="submit">{t.save}</button>
+              </form>
+              <div style={{ maxHeight: presets.length > 4 ? 260 : undefined, overflowY: presets.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
+              {presets.map((preset) => (
+                <div key={preset.id} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                  <strong>{preset.name}</strong>
+                  <button style={btnGhostStyle} onClick={() => loadPreset(preset)}>{t.load}</button>
+                  <button style={btnGhostStyle} onClick={() => void deletePreset(preset.id)}>{t.delete}</button>
+                </div>
+              ))}
+              </div>
+            </Panel>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <button style={{ ...btnGhostStyle, borderColor: composerViewTab === 'build' ? ui.accent : ui.border }} onClick={() => setComposerViewTab('build')}>Build</button>
+              <button style={{ ...btnGhostStyle, borderColor: composerViewTab === 'structured' ? ui.accent : ui.border }} onClick={() => setComposerViewTab('structured')}>{t.structuredView}</button>
+              <button style={{ ...btnGhostStyle, borderColor: composerViewTab === 'output' ? ui.accent : ui.border }} onClick={() => setComposerViewTab('output')}>Output & Inspect</button>
+            </div>
+
+            {composerViewTab === 'build' && (
+              <>
             <Panel title={t.phrasePicker}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ color: ui.muted }}>{t.categories}:</span>
@@ -1355,7 +1403,10 @@ function App() {
                     type="button"
                     disabled={selectedPackId === null}
                     onClick={() => {
-                      if (selectedPackId !== null) addPackById(selectedPackId)
+                      if (selectedPackId !== null) {
+                        addPackById(selectedPackId)
+                        setSelectedPackId(null)
+                      }
                     }}
                   >
                     Add pack
@@ -1407,7 +1458,11 @@ function App() {
                 </div>
               </div>
             </Panel>
+              </>
+            )}
 
+            {composerViewTab === 'output' && (
+              <>
             <Panel title={t.promptInspector}>
               <p style={{ marginTop: 0 }}>{t.qualityScore}: <strong>{promptHealth.score}/100</strong> {promptHealth.score >= 85 ? '🟢' : promptHealth.score >= 60 ? '🟡' : '🔴'}</p>
               {promptHealth.issues.length ? (
@@ -1421,7 +1476,11 @@ function App() {
               </div>
             </Panel>
 
-            <Panel title={t.structuredView}>
+              </>
+            )}
+
+            {composerViewTab === 'structured' && (
+              <Panel title={t.structuredView}>
               {groupedPositive.map(([group, items]) => (
                 <div key={group} style={{ marginBottom: 10 }}>
                   <strong>🏷️ {group}</strong>
@@ -1439,8 +1498,11 @@ function App() {
                   ))}
                 </>
               )}
-            </Panel>
+              </Panel>
+            )}
 
+            {composerViewTab === 'output' && (
+              <>
             <section style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
               <Panel title={t.positivePrompt}>
                 <textarea readOnly value={positivePrompt} rows={4} style={textareaStyle} />
@@ -1451,22 +1513,8 @@ function App() {
                 <button style={btnStyle} onClick={() => void copyText(negativePrompt)}>{t.copy}</button>
               </Panel>
             </section>
-
-            <Panel title={t.composerPresets}>
-              <form onSubmit={savePreset} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                <input style={inputStyle} value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder={t.presetName} />
-                <button style={btnStyle} type="submit">{t.save}</button>
-              </form>
-              <div style={{ maxHeight: presets.length > 4 ? 260 : undefined, overflowY: presets.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
-              {presets.map((preset) => (
-                <div key={preset.id} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-                  <strong>{preset.name}</strong>
-                  <button style={btnGhostStyle} onClick={() => loadPreset(preset)}>{t.load}</button>
-                  <button style={btnGhostStyle} onClick={() => void deletePreset(preset.id)}>{t.delete}</button>
-                </div>
-              ))}
-              </div>
-            </Panel>
+              </>
+            )}
           </>
         )}
 
