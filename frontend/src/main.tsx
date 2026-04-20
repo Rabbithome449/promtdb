@@ -961,7 +961,6 @@ function App() {
                   onChange={(e) => {
                     const nextId = e.target.value ? Number(e.target.value) : null
                     setNewPhraseCategoryId(nextId)
-                    setLibrarySelectedCategoryId(nextId)
                   }}
                 >
                   <option value="" disabled>
