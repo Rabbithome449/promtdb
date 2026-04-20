@@ -143,6 +143,7 @@ function App() {
   const [newPhraseWeight, setNewPhraseWeight] = useState('')
   const [newPhraseNotes, setNewPhraseNotes] = useState('')
   const [newPhraseRequiredLora, setNewPhraseRequiredLora] = useState('')
+  const [phraseModalCategoryId, setPhraseModalCategoryId] = useState<number | null>(null)
   const [importPromptText, setImportPromptText] = useState('')
   const [importingPrompt, setImportingPrompt] = useState(false)
   const [isPhraseModalOpen, setIsPhraseModalOpen] = useState(false)
@@ -512,7 +513,9 @@ function App() {
 
   function openCreatePhraseModal() {
     setEditingPhraseId(null)
-    if (newPhraseCategoryId === null) setNewPhraseCategoryId(librarySelectedCategoryId ?? categories[0]?.id ?? null)
+    const fallbackCategoryId = newPhraseCategoryId ?? librarySelectedCategoryId ?? categories[0]?.id ?? null
+    setPhraseModalCategoryId(fallbackCategoryId)
+    if (newPhraseCategoryId === null) setNewPhraseCategoryId(fallbackCategoryId)
     setNewPhraseText('')
     setNewPhraseWeight('1')
     setNewPhraseNotes('')
@@ -522,6 +525,7 @@ function App() {
 
   function openEditPhraseModal(phrase: Phrase) {
     setEditingPhraseId(phrase.id)
+    setPhraseModalCategoryId(phrase.category_id)
     setNewPhraseCategoryId(phrase.category_id)
     setNewPhraseText(phrase.text)
     setNewPhraseWeight(phrase.default_weight === null ? '' : String(phrase.default_weight))
@@ -533,6 +537,7 @@ function App() {
   function closePhraseModal() {
     setIsPhraseModalOpen(false)
     setEditingPhraseId(null)
+    setPhraseModalCategoryId(null)
   }
 
   function splitPromptParts(input: string) {
@@ -610,15 +615,15 @@ function App() {
 
   async function submitPhraseForm(e: React.FormEvent) {
     e.preventDefault()
-    if (!effectivePhraseCategoryId || !newPhraseText.trim()) return
+    if (!phraseModalCategoryId || !newPhraseText.trim()) return
     const body = {
-      category_id: effectivePhraseCategoryId,
+      category_id: phraseModalCategoryId,
       text: newPhraseText.trim(),
       default_weight: newPhraseWeight.trim() ? Number(newPhraseWeight) : 1,
       is_negative_default: false,
       notes: newPhraseNotes.trim() || null,
       required_lora: newPhraseRequiredLora.trim() || null,
-      sort_order: phrasesInEffectivePhraseCategory.length,
+      sort_order: phrases.filter((p) => p.category_id === phraseModalCategoryId).length,
     }
     if (editingPhraseId === null) {
       await api<Phrase>('/phrases', {
@@ -957,10 +962,10 @@ function App() {
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select
                   style={inputStyle}
-                  value={effectivePhraseCategoryId ?? ''}
+                  value={phraseModalCategoryId ?? ''}
                   onChange={(e) => {
                     const nextId = e.target.value ? Number(e.target.value) : null
-                    setNewPhraseCategoryId(nextId)
+                    setPhraseModalCategoryId(nextId)
                   }}
                 >
                   <option value="" disabled>
@@ -1205,7 +1210,7 @@ function App() {
                 <input style={inputStyle} value={newPhraseRequiredLora} onChange={(e) => setNewPhraseRequiredLora(e.target.value)} placeholder={t.requiredLora} />
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button style={btnGhostStyle} type="button" onClick={closePhraseModal}>{t.cancel}</button>
-                  <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId || !newPhraseText.trim()}>{editingPhraseId === null ? t.create : t.save}</button>
+                  <button style={btnStyle} type="submit" disabled={!phraseModalCategoryId || !newPhraseText.trim()}>{editingPhraseId === null ? t.create : t.save}</button>
                 </div>
               </form>
             </div>
