@@ -628,8 +628,8 @@ function App() {
     let current = ''
     let depth = 0
     for (const ch of input) {
-      if (ch === '(') depth += 1
-      if (ch === ')') depth = Math.max(0, depth - 1)
+      if (ch === '(' || ch === '[') depth += 1
+      if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1)
       if (ch === ',' && depth === 0) {
         parts.push(current)
         current = ''
@@ -644,9 +644,33 @@ function App() {
   function parsePromptPhrase(raw: string) {
     const trimmed = raw.trim()
     if (!trimmed) return null
-    const weighted = trimmed.match(/^\((.+):\s*[-+]?\d*\.?\d+\)$/)
-    if (weighted) return { text: weighted[1].trim(), hasWeight: true }
-    return { text: trimmed, hasWeight: false }
+
+    let next = trimmed
+    let hasWeight = false
+
+    next = next.replace(/\[[^\]]*\]/g, ' ').trim()
+    if (!next) return null
+
+    const wrappedWeighted = next.match(/^\((.+):\s*[-+]?\d*\.?\d+\)$/)
+    if (wrappedWeighted) {
+      next = wrappedWeighted[1].trim()
+      hasWeight = true
+    }
+
+    const plainWeighted = next.match(/^(.+):\s*[-+]?\d*\.?\d+$/)
+    if (plainWeighted) {
+      next = plainWeighted[1].trim()
+      hasWeight = true
+    }
+
+    while ((next.startsWith('(') && next.endsWith(')')) || (next.startsWith('{') && next.endsWith('}'))) {
+      next = next.slice(1, -1).trim()
+    }
+
+    next = next.replace(/\s+/g, ' ').trim()
+    if (!next) return null
+
+    return { text: next, hasWeight }
   }
 
   async function importPromptPhrases(e: React.FormEvent) {
