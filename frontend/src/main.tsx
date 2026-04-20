@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 type TabKey = 'dashboard' | 'library' | 'composer' | 'characters'
@@ -150,6 +150,7 @@ function App() {
   const [editingPhraseId, setEditingPhraseId] = useState<number | null>(null)
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
+  const [pendingDeleteCategoryId, setPendingDeleteCategoryId] = useState<number | null>(null)
   const [chipMenuPhraseId, setChipMenuPhraseId] = useState<number | null>(null)
   const [draggingPhraseId, setDraggingPhraseId] = useState<number | null>(null)
 
@@ -420,6 +421,13 @@ function App() {
     () => phrases.filter((p) => p.category_id === effectivePhraseCategoryId),
     [phrases, effectivePhraseCategoryId],
   )
+  const phraseCountByCategoryId = useMemo(() => {
+    const counts = new Map<number, number>()
+    for (const phrase of phrases) {
+      counts.set(phrase.category_id, (counts.get(phrase.category_id) ?? 0) + 1)
+    }
+    return counts
+  }, [phrases])
 
   const sortedPositiveParts = useMemo(() => orderParts(positiveParts), [positiveParts, categories])
   const sortedNegativeParts = useMemo(() => orderParts(negativeParts), [negativeParts, categories])
@@ -504,11 +512,16 @@ function App() {
   }
 
   async function removeCategory(id: number) {
-    if (!window.confirm('Delete category and all its phrases?')) return
     await api(`/categories/${id}`, { method: 'DELETE' })
     if (librarySelectedCategoryId === id) setLibrarySelectedCategoryId(null)
     if (composerSelectedCategoryId === id) setComposerSelectedCategoryId(null)
     await loadAll()
+  }
+
+  async function confirmRemoveCategory() {
+    if (pendingDeleteCategoryId === null) return
+    await removeCategory(pendingDeleteCategoryId)
+    setPendingDeleteCategoryId(null)
   }
 
   function openCreatePhraseModal() {
@@ -927,32 +940,49 @@ function App() {
               <div style={{ maxHeight: categories.length > 4 ? 260 : undefined, overflowY: categories.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
               {categories.map((c) => (
                 <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                  <button
-                    style={{ ...btnGhostStyle, borderColor: librarySelectedCategoryId === c.id ? ui.accent : ui.border }}
-                    onClick={() => setLibrarySelectedCategoryId(c.id)}
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      border: `1px solid ${librarySelectedCategoryId === c.id ? ui.accent : ui.border}`,
+                      background: librarySelectedCategoryId === c.id ? ui.panel2 : ui.panel,
+                      borderRadius: 999,
+                      padding: '6px 10px',
+                      width: '100%',
+                    }}
                   >
-                    {c.name}
-                  </button>
-                  {editingCategoryId === c.id ? (
-                    <>
-                      <input
-                        style={inputStyle}
-                        value={editingCategoryName}
-                        onChange={(e) => setEditingCategoryName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') void saveRenamedCategory()
-                          if (e.key === 'Escape') cancelRenameCategory()
-                        }}
-                      />
-                      <button style={btnGhostStyle} onClick={() => void saveRenamedCategory()}>Save</button>
-                      <button style={btnGhostStyle} onClick={cancelRenameCategory}>✕</button>
-                    </>
-                  ) : (
-                    <>
-                      <button style={btnGhostStyle} onClick={() => startRenameCategory(c)}>✏️</button>
-                      <button style={btnGhostStyle} onClick={() => removeCategory(c.id)} title="Delete">🗑️</button>
-                    </>
-                  )}
+                    {editingCategoryId === c.id ? (
+                      <>
+                        <input
+                          style={{ ...inputStyle, flex: 1, padding: '6px 10px', borderRadius: 999 }}
+                          value={editingCategoryName}
+                          autoFocus
+                          onChange={(e) => setEditingCategoryName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void saveRenamedCategory()
+                            if (e.key === 'Escape') cancelRenameCategory()
+                          }}
+                        />
+                        <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => void saveRenamedCategory()}>✓</button>
+                        <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={cancelRenameCategory}>✕</button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 10px', border: 'none', background: 'transparent', flex: 1, textAlign: 'left' }}
+                          onClick={() => setLibrarySelectedCategoryId(c.id)}
+                        >
+                          {c.name}
+                        </button>
+                        <span style={{ color: ui.muted, fontSize: 12, border: `1px solid ${ui.border}`, borderRadius: 999, padding: '2px 8px' }}>
+                          {phraseCountByCategoryId.get(c.id) ?? 0}
+                        </span>
+                        <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => startRenameCategory(c)} title="Edit">✏️</button>
+                        <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => setPendingDeleteCategoryId(c.id)} title="Delete">✕</button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
               </div>
@@ -962,10 +992,10 @@ function App() {
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <select
                   style={inputStyle}
-                  value={phraseModalCategoryId ?? ''}
+                  value={librarySelectedCategoryId ?? ''}
                   onChange={(e) => {
                     const nextId = e.target.value ? Number(e.target.value) : null
-                    setPhraseModalCategoryId(nextId)
+                    setLibrarySelectedCategoryId(nextId)
                   }}
                 >
                   <option value="" disabled>
@@ -1068,14 +1098,14 @@ function App() {
                 onDrop={() => dropPhraseTo('positive')}
                 style={{ borderRadius: 14, boxShadow: draggingPhraseId !== null ? `0 0 0 2px ${ui.accent}` : 'none' }}
               >
-                <ComposerList title={t.positive} items={positiveParts} setItems={setPositiveParts} updatePart={updatePart} movePart={movePart} removePart={removePart} labels={{ noItemsYet: t.noItemsYet, weight: t.weight, category: t.category, uncategorized: t.uncategorized, important: t.important, recurring: t.recurring, requiredLora: t.requiredLora }} />
+                <ComposerList title={t.positive} items={positiveParts} setItems={setPositiveParts} labels={{ noItemsYet: t.noItemsYet }} />
               </div>
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => dropPhraseTo('negative')}
                 style={{ borderRadius: 14, boxShadow: draggingPhraseId !== null ? `0 0 0 2px ${ui.accent}` : 'none' }}
               >
-                <ComposerList title={t.negative} items={negativeParts} setItems={setNegativeParts} updatePart={updatePart} movePart={movePart} removePart={removePart} labels={{ noItemsYet: t.noItemsYet, weight: t.weight, category: t.category, uncategorized: t.uncategorized, important: t.important, recurring: t.recurring, requiredLora: t.requiredLora }} />
+                <ComposerList title={t.negative} items={negativeParts} setItems={setNegativeParts} labels={{ noItemsYet: t.noItemsYet }} />
               </div>
             </section>
 
@@ -1215,6 +1245,18 @@ function App() {
             </div>
           </div>
         )}
+        {pendingDeleteCategoryId !== null && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(9,15,27,0.72)', display: 'grid', placeItems: 'center', zIndex: 60, padding: 16 }}>
+            <div style={{ width: 'min(520px, 100%)', background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 14, padding: 14, boxShadow: ui.shadow }}>
+              <h3 style={{ margin: '0 0 8px 0' }}>Delete category?</h3>
+              <p style={{ margin: '0 0 12px 0', color: ui.muted }}>This will delete the category and all phrases inside it.</p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button style={btnGhostStyle} onClick={() => setPendingDeleteCategoryId(null)}>{t.cancel}</button>
+                <button style={{ ...btnStyle, background: ui.danger }} onClick={() => void confirmRemoveCategory()}>{t.delete}</button>
+              </div>
+            </div>
+          </div>
+        )}
           </>
         )}
       </div>
@@ -1244,43 +1286,109 @@ function ComposerList({
   title,
   items,
   setItems,
-  updatePart,
-  movePart,
-  removePart,
   labels,
 }: {
   title: string
   items: ComposerItem[]
   setItems: React.Dispatch<React.SetStateAction<ComposerItem[]>>
-  updatePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number, patch: Partial<ComposerItem>) => void
-  movePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number, dir: -1 | 1) => void
-  removePart: (setter: React.Dispatch<React.SetStateAction<ComposerItem[]>>, idx: number) => void
-  labels: { noItemsYet: string, weight: string, category: string, uncategorized: string, important: string, recurring: string, requiredLora: string }
+  labels: { noItemsYet: string }
 }) {
+  const [draggingItemId, setDraggingItemId] = useState<string | null>(null)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [editingLora, setEditingLora] = useState('')
+  const droppedInsideRef = useRef(false)
+
+  function removeById(id: string) {
+    setItems((curr) => curr.filter((item) => item.id !== id))
+  }
+
+  function moveByIds(sourceId: string, targetId: string) {
+    if (sourceId === targetId) return
+    setItems((curr) => {
+      const from = curr.findIndex((item) => item.id === sourceId)
+      const to = curr.findIndex((item) => item.id === targetId)
+      if (from === -1 || to === -1) return curr
+      const next = [...curr]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
+  }
+
+  function openLoraModal(item: ComposerItem) {
+    setEditingItemId(item.id)
+    setEditingLora(item.requiredLora ?? '')
+  }
+
+  function saveLora() {
+    if (!editingItemId) return
+    setItems((curr) => curr.map((item) => (item.id === editingItemId ? { ...item, requiredLora: editingLora.trim() || undefined } : item)))
+    setEditingItemId(null)
+    setEditingLora('')
+  }
+
   return (
     <Panel title={title}>
       {items.length === 0 && <p style={{ color: ui.muted }}>{labels.noItemsYet}</p>}
-      <div style={{ maxHeight: items.length > 4 ? 340 : undefined, overflowY: items.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
+      <div
+        style={{ maxHeight: items.length > 4 ? 340 : undefined, overflowY: items.length > 4 ? 'auto' : undefined, paddingRight: 4, minHeight: 42 }}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={() => { droppedInsideRef.current = true }}
+      >
       {items.map((item, idx) => (
-        <div key={item.id} style={{ border: `1px solid ${ui.border}`, borderRadius: 10, padding: 6, marginBottom: 6 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px auto', gap: 6, marginBottom: 6 }}>
-            <input style={inputStyle} value={item.text} onChange={(e) => updatePart(setItems, idx, { text: e.target.value })} />
-            <input style={inputStyle} type="number" step="0.1" placeholder={labels.weight} value={item.weight ?? ''} onChange={(e) => updatePart(setItems, idx, { weight: e.target.value ? Number(e.target.value) : undefined })} />
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button style={btnGhostStyle} onClick={() => movePart(setItems, idx, -1)}>↑</button>
-              <button style={btnGhostStyle} onClick={() => movePart(setItems, idx, 1)}>↓</button>
-              <button style={btnGhostStyle} onClick={() => removePart(setItems, idx)}>✕</button>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-            <span style={{ color: ui.muted }}>{labels.category}: {item.category || labels.uncategorized}</span>
-            <label><input type="checkbox" checked={Boolean(item.isImportant)} onChange={(e) => updatePart(setItems, idx, { isImportant: e.target.checked })} /> {labels.important}</label>
-            <label><input type="checkbox" checked={Boolean(item.isRecurring)} onChange={(e) => updatePart(setItems, idx, { isRecurring: e.target.checked })} /> {labels.recurring}</label>
-          </div>
-          <input style={inputStyle} value={item.requiredLora ?? ''} onChange={(e) => updatePart(setItems, idx, { requiredLora: e.target.value || undefined })} placeholder={labels.requiredLora} />
-        </div>
+        <button
+          key={item.id}
+          draggable
+          onDragStart={() => {
+            droppedInsideRef.current = false
+            setDraggingItemId(item.id)
+          }}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => {
+            if (!draggingItemId) return
+            droppedInsideRef.current = true
+            moveByIds(draggingItemId, item.id)
+          }}
+          onDragEnd={() => {
+            if (draggingItemId && !droppedInsideRef.current) removeById(draggingItemId)
+            setDraggingItemId(null)
+            droppedInsideRef.current = false
+          }}
+          onClick={() => openLoraModal(item)}
+          style={{
+            ...btnGhostStyle,
+            borderRadius: 999,
+            padding: '8px 12px',
+            marginBottom: 8,
+            marginRight: 8,
+            background: draggingItemId === item.id ? ui.panel : ui.panel2,
+          }}
+        >
+          {item.text} ({item.weight ?? 1})
+          <span
+            onClick={(e) => {
+              e.stopPropagation()
+              removeById(item.id)
+            }}
+            style={{ marginLeft: 8, border: `1px solid ${ui.border}`, borderRadius: 999, padding: '0 6px' }}
+          >
+            ✕
+          </span>
+        </button>
       ))}
       </div>
+      {editingItemId !== null && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(9,15,27,0.72)', display: 'grid', placeItems: 'center', zIndex: 70, padding: 16 }}>
+          <div style={{ width: 'min(520px, 100%)', background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 14, padding: 14, boxShadow: ui.shadow }}>
+            <h3 style={{ margin: '0 0 8px 0' }}>Edit LoRA</h3>
+            <input style={inputStyle} value={editingLora} onChange={(e) => setEditingLora(e.target.value)} placeholder="required LoRA" />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+              <button style={btnGhostStyle} onClick={() => setEditingItemId(null)}>Cancel</button>
+              <button style={btnStyle} onClick={saveLora}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Panel>
   )
 }
