@@ -346,8 +346,10 @@ function App() {
   const t = i18n[language]
 
   const [presetName, setPresetName] = useState('')
-  const [packName, setPackName] = useState('')
   const [selectedPackId, setSelectedPackId] = useState<number | null>(null)
+  const [activePackIds, setActivePackIds] = useState<number[]>([])
+  const [isPackNameModalOpen, setIsPackNameModalOpen] = useState(false)
+  const [pendingPackName, setPendingPackName] = useState('')
   const [characterName, setCharacterName] = useState('')
   const [characterVersionFamily, setCharacterVersionFamily] = useState('')
   const [characterVersion, setCharacterVersion] = useState('1')
@@ -481,9 +483,11 @@ function App() {
       const covered = all.filter((k) => (k.startsWith('p:') ? activePositive.has(k.slice(2)) : activeNegative.has(k.slice(2)))).length
       const total = all.length
       const percent = total === 0 ? 100 : Math.round((covered / total) * 100)
-      return { pack, covered, total, percent, complete: total > 0 && covered === total }
-    })
-  }, [packs, positiveParts, negativeParts])
+      const inUse = covered > 0
+      const isActive = activePackIds.includes(pack.id)
+      return { pack, covered, total, percent, complete: total > 0 && covered === total, inUse, isActive }
+    }).filter((item) => item.inUse || item.isActive)
+  }, [packs, positiveParts, negativeParts, activePackIds])
 
   async function loadAll() {
     setLoading(true)
@@ -863,18 +867,33 @@ function App() {
     }
   }
 
-  async function savePack(e: React.FormEvent) {
+  function openSavePackModal() {
+    if (positiveParts.length === 0 && negativeParts.length === 0) return
+    setPendingPackName('')
+    setIsPackNameModalOpen(true)
+  }
+
+  function closeSavePackModal() {
+    setIsPackNameModalOpen(false)
+    setPendingPackName('')
+  }
+
+  async function confirmSavePack(e: React.FormEvent) {
     e.preventDefault()
-    if (!packName.trim()) return
+    const nextName = pendingPackName.trim()
+    if (!nextName) return
     await api('/packs', {
       method: 'POST',
       body: JSON.stringify({
-        name: packName.trim(),
+        name: nextName,
         positive_parts: positiveParts.map((p) => ({ text: p.text, weight: p.weight ?? 1, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
         negative_parts: negativeParts.map((p) => ({ text: p.text, weight: p.weight ?? 1, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
       }),
     })
-    setPackName('')
+    setPositiveParts([])
+    setNegativeParts([])
+    setActivePackIds([])
+    closeSavePackModal()
     await loadAll()
   }
 
@@ -883,6 +902,7 @@ function App() {
     if (!pack) return
     setPositiveParts((curr) => mergePartsReplace(curr, pack.positive_parts.map((part, idx) => partToComposerItem(part, `pack-pos-${pack.id}`, idx))))
     setNegativeParts((curr) => mergePartsReplace(curr, pack.negative_parts.map((part, idx) => partToComposerItem(part, `pack-neg-${pack.id}`, idx))))
+    setActivePackIds((curr) => (curr.includes(packId) ? curr : [...curr, packId]))
   }
 
   function removePackContribution(packId: number) {
@@ -892,12 +912,14 @@ function App() {
     const negativeKeys = new Set(pack.negative_parts.map((part) => normalizeText(part.text)).filter(Boolean))
     setPositiveParts((curr) => curr.filter((item) => !positiveKeys.has(normalizeText(item.text))))
     setNegativeParts((curr) => curr.filter((item) => !negativeKeys.has(normalizeText(item.text))))
+    setActivePackIds((curr) => curr.filter((id) => id !== packId))
   }
 
   async function deletePack(id: number) {
     if (!window.confirm('Delete pack?')) return
     await api(`/packs/${id}`, { method: 'DELETE' })
     if (selectedPackId === id) setSelectedPackId(null)
+    setActivePackIds((curr) => curr.filter((packId) => packId !== id))
     await loadAll()
   }
 
@@ -1311,15 +1333,11 @@ function App() {
 
             <Panel title="Composer Packs">
               <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
-                <form onSubmit={savePack} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <input
-                    style={inputStyle}
-                    value={packName}
-                    onChange={(e) => setPackName(e.target.value)}
-                    placeholder="Pack name"
-                  />
-                  <button style={btnStyle} type="submit">Save current as pack</button>
-                </form>
+                {(positiveParts.length > 0 || negativeParts.length > 0) && (
+                  <div>
+                    <button style={btnStyle} type="button" onClick={openSavePackModal}>Save current as pack</button>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <select
@@ -1342,6 +1360,15 @@ function App() {
                   >
                     Add pack
                   </button>
+                  {selectedPackId !== null && (
+                    <button
+                      style={{ ...btnGhostStyle, borderColor: ui.danger, color: ui.danger }}
+                      type="button"
+                      onClick={() => void deletePack(selectedPackId)}
+                    >
+                      Delete pack
+                    </button>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1373,14 +1400,6 @@ function App() {
                         title="Remove this pack from composer"
                       >
                         ✕
-                      </button>
-                      <button
-                        style={{ ...btnGhostStyle, borderRadius: 999, padding: '2px 6px' }}
-                        type="button"
-                        onClick={() => void deletePack(pack.id)}
-                        title="Delete saved pack"
-                      >
-                        🗑️
                       </button>
                     </div>
                   ))}
@@ -1520,6 +1539,26 @@ function App() {
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button style={btnGhostStyle} type="button" onClick={closePhraseModal}>{t.cancel}</button>
                   <button style={btnStyle} type="submit" disabled={!phraseModalCategoryId || !newPhraseText.trim()}>{editingPhraseId === null ? t.create : t.save}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+        {isPackNameModalOpen && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(9,15,27,0.72)', display: 'grid', placeItems: 'center', zIndex: 65, padding: 16 }}>
+            <div style={{ width: 'min(520px, 100%)', background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 14, padding: 14, boxShadow: ui.shadow }}>
+              <h3 style={{ margin: '0 0 8px 0' }}>Save pack</h3>
+              <form onSubmit={confirmSavePack} style={{ display: 'grid', gap: 8 }}>
+                <input
+                  style={inputStyle}
+                  value={pendingPackName}
+                  autoFocus
+                  onChange={(e) => setPendingPackName(e.target.value)}
+                  placeholder="Pack name"
+                />
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button style={btnGhostStyle} type="button" onClick={closeSavePackModal}>{t.cancel}</button>
+                  <button style={btnStyle} type="submit" disabled={!pendingPackName.trim()}>{t.save}</button>
                 </div>
               </form>
             </div>
