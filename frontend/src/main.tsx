@@ -563,16 +563,26 @@ function App() {
 
   async function importPromptPhrases(e: React.FormEvent) {
     e.preventDefault()
-    if (!effectivePhraseCategoryId || !importPromptText.trim()) return
+    if (!importPromptText.trim()) return
     setImportingPrompt(true)
     try {
+      let importedCategoryId = categories.find((c) => c.name.trim().toLowerCase() === 'imported')?.id ?? null
+      if (importedCategoryId === null) {
+        const created = await api<Category>('/categories', {
+          method: 'POST',
+          body: JSON.stringify({ name: 'imported', sort_order: categories.length }),
+        })
+        importedCategoryId = created.id
+      }
+
+      const importedCategoryPhrasesCount = phrases.filter((p) => p.category_id === importedCategoryId).length
       const existing = new Set(phrases.map((p) => normalizeText(p.text)).filter(Boolean))
       const seenNew = new Set<string>()
       const parsed = splitPromptParts(importPromptText)
         .map(parsePromptPhrase)
         .filter((v): v is { text: string, hasWeight: boolean } => Boolean(v))
 
-      let nextSortOrder = phrasesInEffectivePhraseCategory.length
+      let nextSortOrder = importedCategoryPhrasesCount
       for (const item of parsed) {
         const key = normalizeText(item.text)
         if (!key || existing.has(key) || seenNew.has(key)) continue
@@ -580,7 +590,7 @@ function App() {
         await api<Phrase>('/phrases', {
           method: 'POST',
           body: JSON.stringify({
-            category_id: effectivePhraseCategoryId,
+            category_id: importedCategoryId,
             text: item.text,
             default_weight: item.hasWeight ? 1 : null,
             is_negative_default: false,
