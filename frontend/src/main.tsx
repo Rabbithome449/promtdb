@@ -1316,7 +1316,7 @@ function App() {
                 </div>
 
                 {composerViewTab === 'build' && (
-                  <>
+                  <div style={{ display: 'grid', gap: 12 }}>
             <Panel title={t.phrasePicker}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ color: ui.muted }}>{t.categories}:</span>
@@ -1460,11 +1460,11 @@ function App() {
                 </div>
               </div>
             </Panel>
-                  </>
+                  </div>
                 )}
 
                 {composerViewTab === 'output' && (
-                  <>
+                  <div style={{ display: 'grid', gap: 12 }}>
             <Panel title={t.promptInspector}>
               <p style={{ marginTop: 0 }}>{t.qualityScore}: <strong>{promptHealth.score}/100</strong> {promptHealth.score >= 85 ? '🟢' : promptHealth.score >= 60 ? '🟡' : '🔴'}</p>
               {promptHealth.issues.length ? (
@@ -1478,7 +1478,7 @@ function App() {
               </div>
             </Panel>
 
-                  </>
+                  </div>
                 )}
 
                 {composerViewTab === 'structured' && (
@@ -1504,18 +1504,18 @@ function App() {
                 )}
 
                 {composerViewTab === 'output' && (
-                  <>
+                  <div style={{ marginTop: 4 }}>
             <section style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
               <Panel title={t.positivePrompt}>
                 <textarea readOnly value={positivePrompt} rows={4} style={textareaStyle} />
-                <button style={btnStyle} onClick={() => void copyText(positivePrompt)}>{t.copy}</button>
+                <button style={{ ...btnStyle, marginTop: 8 }} onClick={() => void copyText(positivePrompt)}>{t.copy}</button>
               </Panel>
               <Panel title={t.negativePrompt}>
                 <textarea readOnly value={negativePrompt} rows={4} style={textareaStyle} />
-                <button style={btnStyle} onClick={() => void copyText(negativePrompt)}>{t.copy}</button>
+                <button style={{ ...btnStyle, marginTop: 8 }} onClick={() => void copyText(negativePrompt)}>{t.copy}</button>
               </Panel>
             </section>
-                  </>
+                  </div>
                 )}
               </section>
             </div>
