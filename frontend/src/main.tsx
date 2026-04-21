@@ -508,10 +508,8 @@ function App() {
   const sortedPositiveParts = useMemo(() => orderParts(positiveParts), [positiveParts, categories])
   const sortedNegativeParts = useMemo(() => orderParts(negativeParts), [negativeParts, categories])
 
-  const positivePrompt = useMemo(() => toPrompt(sortedPositiveParts), [sortedPositiveParts])
-  const negativePrompt = useMemo(() => toPrompt(sortedNegativeParts), [sortedNegativeParts])
-  const groupedPositivePrompt = useMemo(() => toGroupedPrompt(sortedPositiveParts, categories), [sortedPositiveParts, categories])
-  const groupedNegativePrompt = useMemo(() => toGroupedPrompt(sortedNegativeParts, categories), [sortedNegativeParts, categories])
+  const positivePrompt = useMemo(() => toGroupedPrompt(sortedPositiveParts, categories), [sortedPositiveParts, categories])
+  const negativePrompt = useMemo(() => toGroupedPrompt(sortedNegativeParts, categories), [sortedNegativeParts, categories])
 
   const packCoverage = useMemo(() => {
     const toKey = (part: PromptPart) => `${normalizeText(part.text)}::${part.weight ?? ''}`
@@ -582,8 +580,10 @@ function App() {
     const styleEl = document.createElement('style')
     styleEl.setAttribute('data-scrollbars', 'hidden')
     styleEl.innerHTML = `
-      *::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+      * { scrollbar-width: none !important; }
+      *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; background: transparent !important; }
       *::-webkit-scrollbar-thumb { background: transparent !important; }
+      *::-webkit-scrollbar-track { background: transparent !important; }
     `
     document.head.appendChild(styleEl)
     return () => {
@@ -1560,12 +1560,12 @@ function App() {
                   <div style={{ marginTop: 4 }}>
             <section style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
               <Panel title={t.positivePrompt}>
-                <textarea readOnly value={groupedPositivePrompt} rows={6} style={textareaStyle} />
-                <button style={{ ...btnStyle, marginTop: 8 }} onClick={() => void copyText(groupedPositivePrompt)}>{t.copy}</button>
+                <textarea readOnly value={positivePrompt} rows={6} style={textareaStyle} />
+                <button style={{ ...btnStyle, marginTop: 8 }} onClick={() => void copyText(positivePrompt)}>{t.copy}</button>
               </Panel>
               <Panel title={t.negativePrompt}>
-                <textarea readOnly value={groupedNegativePrompt} rows={6} style={textareaStyle} />
-                <button style={{ ...btnStyle, marginTop: 8 }} onClick={() => void copyText(groupedNegativePrompt)}>{t.copy}</button>
+                <textarea readOnly value={negativePrompt} rows={6} style={textareaStyle} />
+                <button style={{ ...btnStyle, marginTop: 8 }} onClick={() => void copyText(negativePrompt)}>{t.copy}</button>
               </Panel>
             </section>
                   </div>
