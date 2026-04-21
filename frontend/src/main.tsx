@@ -380,7 +380,6 @@ function App() {
 
   const [presetName, setPresetName] = useState('')
   const [selectedPackId, setSelectedPackId] = useState<number | null>(null)
-  const [activePackIds, setActivePackIds] = useState<number[]>([])
   const [isPackNameModalOpen, setIsPackNameModalOpen] = useState(false)
   const [pendingPackName, setPendingPackName] = useState('')
   const [characterName, setCharacterName] = useState('')
@@ -523,10 +522,9 @@ function App() {
       const total = all.length
       const percent = total === 0 ? 100 : Math.round((covered / total) * 100)
       const inUse = covered > 0
-      const isActive = activePackIds.includes(pack.id)
-      return { pack, covered, total, percent, complete: total > 0 && covered === total, inUse, isActive }
-    }).filter((item) => item.inUse || item.isActive)
-  }, [packs, positiveParts, negativeParts, activePackIds])
+      return { pack, covered, total, percent, complete: total > 0 && covered === total, inUse }
+    }).filter((item) => item.inUse)
+  }, [packs, positiveParts, negativeParts])
 
   async function loadAll() {
     setLoading(true)
@@ -1002,7 +1000,6 @@ function App() {
     })
     setPositiveParts([])
     setNegativeParts([])
-    setActivePackIds([])
     closeSavePackModal()
     await loadAll()
   }
@@ -1012,7 +1009,6 @@ function App() {
     if (!pack) return
     setPositiveParts((curr) => mergePartsReplace(curr, pack.positive_parts.map((part, idx) => partToComposerItem(part, `pack-pos-${pack.id}`, idx))))
     setNegativeParts((curr) => mergePartsReplace(curr, pack.negative_parts.map((part, idx) => partToComposerItem(part, `pack-neg-${pack.id}`, idx))))
-    setActivePackIds((curr) => (curr.includes(packId) ? curr : [...curr, packId]))
   }
 
   function removePackContribution(packId: number) {
@@ -1022,14 +1018,12 @@ function App() {
     const negativeKeys = new Set(pack.negative_parts.map((part) => normalizeText(part.text)).filter(Boolean))
     setPositiveParts((curr) => curr.filter((item) => !positiveKeys.has(normalizeText(item.text))))
     setNegativeParts((curr) => curr.filter((item) => !negativeKeys.has(normalizeText(item.text))))
-    setActivePackIds((curr) => curr.filter((id) => id !== packId))
   }
 
   async function deletePack(id: number) {
     if (!window.confirm('Delete pack?')) return
     await api(`/packs/${id}`, { method: 'DELETE' })
     if (selectedPackId === id) setSelectedPackId(null)
-    setActivePackIds((curr) => curr.filter((packId) => packId !== id))
     await loadAll()
   }
 
