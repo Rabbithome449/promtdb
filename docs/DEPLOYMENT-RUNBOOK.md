@@ -3,6 +3,14 @@
 ## Goal
 Standard deployment path when asked to "deploy the project".
 
+## Versioning mode (active)
+- Project uses semantic versioning with release candidates:
+  - RC tag: `vMAJOR.MINOR.PATCH-rc.N`
+  - Release tag: `vMAJOR.MINOR.PATCH`
+- Approved test branches are merged into the current RC line.
+- Final release happens only when the full RC is approved.
+- See `docs/VERSIONING.md` for full rules.
+
 ## Paths
 - Repository: `/data/.openclaw/workspace/promtdb`
 - Frontend: `/data/.openclaw/workspace/promtdb/frontend`
