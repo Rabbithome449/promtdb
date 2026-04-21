@@ -125,6 +125,36 @@ function toPrompt(parts: ComposerItem[]) {
   return parts.map((p) => (p.weight === undefined ? p.text : `(${p.text}:${p.weight})`)).join(', ')
 }
 
+function toGroupedPrompt(parts: ComposerItem[], categories: Category[]) {
+  const order = new Map<string, number>()
+  categories.forEach((c, idx) => order.set(c.name, c.sort_order ?? idx))
+
+  const groups = new Map<string, ComposerItem[]>()
+  for (const part of parts) {
+    const key = part.category?.trim() || '__uncategorized__'
+    const curr = groups.get(key) || []
+    curr.push(part)
+    groups.set(key, curr)
+  }
+
+  const sortedKeys = [...groups.keys()].sort((a, b) => {
+    if (a === '__uncategorized__') return 1
+    if (b === '__uncategorized__') return -1
+    const ao = order.get(a) ?? Number.MAX_SAFE_INTEGER
+    const bo = order.get(b) ?? Number.MAX_SAFE_INTEGER
+    if (ao !== bo) return ao - bo
+    return a.localeCompare(b)
+  })
+
+  return sortedKeys.map((key, idx) => {
+    const items = groups.get(key) || []
+    const rendered = items.map((p) => (p.weight === undefined ? `(${p.text})` : `(${p.text}:${p.weight})`)).join(', ')
+    const withTransitionComma = idx < sortedKeys.length - 1 ? `${rendered},` : rendered
+    const title = key === '__uncategorized__' ? 'Uncategorized' : key
+    return `[${title}]\n${withTransitionComma}`
+  }).join('\n\n')
+}
+
 const ui = {
   bg: '#090f1b',
   bg2: '#111b2f',
@@ -362,6 +392,12 @@ function App() {
   const [negativeParts, setNegativeParts] = useState<ComposerItem[]>([])
   const isMobile = viewportWidth < 900
   const isNarrow = viewportWidth < 640
+  const scrollAreaStyle: React.CSSProperties = {
+    overflowY: 'auto',
+    paddingRight: 4,
+    scrollbarWidth: 'none',
+    msOverflowStyle: 'none',
+  }
 
   const categoryNameById = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
   const categoryByName = useMemo(() => {
@@ -470,8 +506,8 @@ function App() {
   const sortedPositiveParts = useMemo(() => orderParts(positiveParts), [positiveParts, categories])
   const sortedNegativeParts = useMemo(() => orderParts(negativeParts), [negativeParts, categories])
 
-  const positivePrompt = useMemo(() => toPrompt(sortedPositiveParts), [sortedPositiveParts])
-  const negativePrompt = useMemo(() => toPrompt(sortedNegativeParts), [sortedNegativeParts])
+  const positivePrompt = useMemo(() => toGroupedPrompt(sortedPositiveParts, categories), [sortedPositiveParts, categories])
+  const negativePrompt = useMemo(() => toGroupedPrompt(sortedNegativeParts, categories), [sortedNegativeParts, categories])
 
   const packCoverage = useMemo(() => {
     const toKey = (part: PromptPart) => `${normalizeText(part.text)}::${part.weight ?? ''}`
@@ -536,6 +572,21 @@ function App() {
   useEffect(() => {
     document.body.style.margin = '0'
     document.body.style.background = ui.bg
+  }, [])
+
+  useEffect(() => {
+    const styleEl = document.createElement('style')
+    styleEl.setAttribute('data-scrollbars', 'hidden')
+    styleEl.innerHTML = `
+      * { scrollbar-width: none !important; }
+      *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; background: transparent !important; }
+      *::-webkit-scrollbar-thumb { background: transparent !important; }
+      *::-webkit-scrollbar-track { background: transparent !important; }
+    `
+    document.head.appendChild(styleEl)
+    return () => {
+      styleEl.remove()
+    }
   }, [])
 
   useEffect(() => {
@@ -1157,7 +1208,7 @@ function App() {
                   </button>
                 </div>
               )}
-              <div style={{ maxHeight: 'min(52vh, calc(100vh - 300px))', overflowY: 'auto', paddingRight: 4 }}>
+              <div style={{ ...scrollAreaStyle, maxHeight: 'min(52vh, calc(100vh - 300px))' }}>
               {visibleLibraryCategories.map((c) => (
                 <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                   <div
@@ -1252,7 +1303,7 @@ function App() {
                 </button>
               </form>
 
-              <div style={{ maxHeight: 'min(52vh, calc(100vh - 300px))', overflowY: 'auto', paddingRight: 4 }}>
+              <div style={{ ...scrollAreaStyle, maxHeight: 'min(52vh, calc(100vh - 300px))' }}>
               {libraryCategoryPhrases.map((p) => (
                 <div key={`cat-${p.id}`} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                   <div
@@ -1296,7 +1347,7 @@ function App() {
                 <input style={inputStyle} value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder={t.presetName} />
                 <button style={btnStyle} type="submit">{t.save}</button>
               </form>
-              <div style={{ maxHeight: presets.length > 4 ? 260 : undefined, overflowY: presets.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
+              <div style={{ ...scrollAreaStyle, maxHeight: presets.length > 4 ? 260 : undefined, overflowY: presets.length > 4 ? 'auto' : 'hidden' }}>
               {presets.map((preset) => (
                 <div key={preset.id} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
                   <strong>{preset.name}</strong>
@@ -1507,11 +1558,11 @@ function App() {
                   <div style={{ marginTop: 4 }}>
             <section style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
               <Panel title={t.positivePrompt}>
-                <textarea readOnly value={positivePrompt} rows={4} style={textareaStyle} />
+                <textarea readOnly value={positivePrompt} rows={6} style={textareaStyle} />
                 <button style={{ ...btnStyle, marginTop: 8 }} onClick={() => void copyText(positivePrompt)}>{t.copy}</button>
               </Panel>
               <Panel title={t.negativePrompt}>
-                <textarea readOnly value={negativePrompt} rows={4} style={textareaStyle} />
+                <textarea readOnly value={negativePrompt} rows={6} style={textareaStyle} />
                 <button style={{ ...btnStyle, marginTop: 8 }} onClick={() => void copyText(negativePrompt)}>{t.copy}</button>
               </Panel>
             </section>
@@ -1536,7 +1587,7 @@ function App() {
               <button style={btnStyle} type="submit">{t.saveAsCharacter}</button>
             </form>
 
-            <div style={{ maxHeight: characters.length > 4 ? 360 : undefined, overflowY: characters.length > 4 ? 'auto' : undefined, paddingRight: 4 }}>
+            <div style={{ ...scrollAreaStyle, maxHeight: characters.length > 4 ? 360 : undefined, overflowY: characters.length > 4 ? 'auto' : 'hidden' }}>
             {characters.map((character) => (
               <div key={character.id} style={{ borderTop: `1px solid ${ui.border}`, padding: '10px 0' }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1702,7 +1753,14 @@ function ComposerList({
     <Panel title={title}>
       {items.length === 0 && <p style={{ color: ui.muted }}>{labels.noItemsYet}</p>}
       <div
-        style={{ maxHeight: items.length > 4 ? 340 : undefined, overflowY: items.length > 4 ? 'auto' : undefined, paddingRight: 4, minHeight: 42 }}
+        style={{
+          maxHeight: items.length > 4 ? 340 : undefined,
+          overflowY: items.length > 4 ? 'auto' : 'hidden',
+          paddingRight: 4,
+          minHeight: 42,
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+        }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={() => { droppedInsideRef.current = true }}
       >
