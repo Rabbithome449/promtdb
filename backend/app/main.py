@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
@@ -95,7 +96,10 @@ async def auth_middleware(request: Request, call_next):
     token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer ") else ""
 
     if not token or not _is_token_valid(token):
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        return JSONResponse(
+            status_code=401,
+            content={"error": {"code": "UNAUTHORIZED", "message": "Unauthorized", "details": None}},
+        )
 
     return await call_next(request)
 
@@ -103,6 +107,37 @@ async def auth_middleware(request: Request, call_next):
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_: Request, exc: HTTPException):
+    code = str(exc.detail).upper().replace(" ", "_") if isinstance(exc.detail, str) else "HTTP_ERROR"
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"code": code, "message": str(exc.detail), "details": None}},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "Validation failed",
+                "details": exc.errors(),
+            }
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(_: Request, __: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"error": {"code": "INTERNAL_ERROR", "message": "Internal server error", "details": None}},
+    )
 
 
 @app.get("/health")

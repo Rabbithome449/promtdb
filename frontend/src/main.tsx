@@ -84,6 +84,13 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error('UNAUTHORIZED')
   }
   if (!res.ok) {
+    const contentType = res.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      const payload = await res.json() as { error?: { code?: string, message?: string } }
+      const code = payload?.error?.code?.trim()
+      const message = payload?.error?.message?.trim()
+      throw new Error(code || message || `API ${res.status}`)
+    }
     const body = await res.text()
     throw new Error(body || `API ${res.status}`)
   }
