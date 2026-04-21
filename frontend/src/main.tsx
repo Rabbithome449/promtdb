@@ -389,6 +389,25 @@ function App() {
   const [characterDescription, setCharacterDescription] = useState('')
   const [characterRequiredSdxlBaseModel, setCharacterRequiredSdxlBaseModel] = useState('')
   const [characterRecommendedSdxlBaseModel, setCharacterRecommendedSdxlBaseModel] = useState('')
+  const [globalSearch, setGlobalSearch] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    return new URLSearchParams(window.location.search).get('q') ?? ''
+  })
+  const [entityFilter, setEntityFilter] = useState<'all' | 'phrases' | 'packs' | 'characters'>(() => {
+    if (typeof window === 'undefined') return 'all'
+    const v = new URLSearchParams(window.location.search).get('entity')
+    return v === 'phrases' || v === 'packs' || v === 'characters' ? v : 'all'
+  })
+  const [relevanceFilter, setRelevanceFilter] = useState<'all' | 'positive' | 'negative'>(() => {
+    if (typeof window === 'undefined') return 'all'
+    const v = new URLSearchParams(window.location.search).get('rel')
+    return v === 'positive' || v === 'negative' ? v : 'all'
+  })
+  const [loraFilter, setLoraFilter] = useState<'all' | 'with' | 'without'>(() => {
+    if (typeof window === 'undefined') return 'all'
+    const v = new URLSearchParams(window.location.search).get('lora')
+    return v === 'with' || v === 'without' ? v : 'all'
+  })
 
   const [positiveParts, setPositiveParts] = useState<ComposerItem[]>([])
   const [negativeParts, setNegativeParts] = useState<ComposerItem[]>([])
@@ -527,6 +546,77 @@ function App() {
       return { pack, covered, total, percent, complete: total > 0 && covered === total, inUse, isActive }
     }).filter((item) => item.inUse || item.isActive)
   }, [packs, positiveParts, negativeParts, activePackIds])
+
+  const positiveTextKeys = useMemo(() => new Set(positiveParts.map((p) => normalizeText(p.text)).filter(Boolean)), [positiveParts])
+  const negativeTextKeys = useMemo(() => new Set(negativeParts.map((p) => normalizeText(p.text)).filter(Boolean)), [negativeParts])
+  const searchNeedle = normalizeText(globalSearch)
+
+  const filteredLibraryPhrases = useMemo(() => {
+    return libraryCategoryPhrases.filter((p) => {
+      if (entityFilter !== 'all' && entityFilter !== 'phrases') return false
+      const textKey = normalizeText(p.text)
+      if (searchNeedle && !textKey.includes(searchNeedle)) return false
+      if (relevanceFilter === 'positive' && !positiveTextKeys.has(textKey)) return false
+      if (relevanceFilter === 'negative' && !negativeTextKeys.has(textKey)) return false
+      const hasLora = Boolean((p.required_lora ?? '').trim())
+      if (loraFilter === 'with' && !hasLora) return false
+      if (loraFilter === 'without' && hasLora) return false
+      return true
+    })
+  }, [libraryCategoryPhrases, entityFilter, searchNeedle, relevanceFilter, positiveTextKeys, negativeTextKeys, loraFilter])
+
+  const filteredComposerPhrases = useMemo(() => {
+    return composerCategoryPhrases.filter((p) => {
+      if (entityFilter !== 'all' && entityFilter !== 'phrases') return false
+      const textKey = normalizeText(p.text)
+      if (searchNeedle && !textKey.includes(searchNeedle)) return false
+      if (relevanceFilter === 'positive' && !positiveTextKeys.has(textKey)) return false
+      if (relevanceFilter === 'negative' && !negativeTextKeys.has(textKey)) return false
+      const hasLora = Boolean((p.required_lora ?? '').trim())
+      if (loraFilter === 'with' && !hasLora) return false
+      if (loraFilter === 'without' && hasLora) return false
+      return true
+    })
+  }, [composerCategoryPhrases, entityFilter, searchNeedle, relevanceFilter, positiveTextKeys, negativeTextKeys, loraFilter])
+
+  const filteredPacks = useMemo(() => {
+    return packs.filter((pack) => {
+      if (entityFilter !== 'all' && entityFilter !== 'packs') return false
+      const inName = normalizeText(pack.name)
+      const partTexts = [...pack.positive_parts, ...pack.negative_parts].map((p) => normalizeText(p.text)).join(' ')
+      if (searchNeedle && !(`${inName} ${partTexts}`).includes(searchNeedle)) return false
+      const hasLora = [...pack.positive_parts, ...pack.negative_parts].some((p) => Boolean((p.required_lora ?? '').trim()))
+      if (loraFilter === 'with' && !hasLora) return false
+      if (loraFilter === 'without' && hasLora) return false
+      if (relevanceFilter === 'positive' && pack.positive_parts.length === 0) return false
+      if (relevanceFilter === 'negative' && pack.negative_parts.length === 0) return false
+      return true
+    })
+  }, [packs, entityFilter, searchNeedle, loraFilter, relevanceFilter])
+
+  const filteredCharacters = useMemo(() => {
+    return characters.filter((character) => {
+      if (entityFilter !== 'all' && entityFilter !== 'characters') return false
+      const hay = normalizeText(`${character.name} ${character.description ?? ''} ${character.version_family ?? ''}`)
+      if (searchNeedle && !hay.includes(searchNeedle)) return false
+      const hasLora = character.required_loras.length > 0
+      if (loraFilter === 'with' && !hasLora) return false
+      if (loraFilter === 'without' && hasLora) return false
+      return true
+    })
+  }, [characters, entityFilter, searchNeedle, loraFilter])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (globalSearch.trim()) params.set('q', globalSearch.trim()); else params.delete('q')
+    if (entityFilter !== 'all') params.set('entity', entityFilter); else params.delete('entity')
+    if (relevanceFilter !== 'all') params.set('rel', relevanceFilter); else params.delete('rel')
+    if (loraFilter !== 'all') params.set('lora', loraFilter); else params.delete('lora')
+    const qs = params.toString()
+    const next = `${window.location.pathname}${qs ? `?${qs}` : ''}`
+    window.history.replaceState(null, '', next)
+  }, [globalSearch, entityFilter, relevanceFilter, loraFilter])
 
   async function loadAll() {
     setLoading(true)
@@ -1214,6 +1304,43 @@ function App() {
 
         {error && <p style={{ color: ui.danger }}>{error}</p>}
 
+        <section style={{ marginBottom: 12, display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr' : 'minmax(220px,2fr) repeat(3,minmax(140px,1fr)) auto' }}>
+          <input
+            style={inputStyle}
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+            placeholder={language === 'de' ? 'Suche in Phrases, Packs, Characters' : 'Search phrases, packs, characters'}
+          />
+          <select style={inputStyle} value={entityFilter} onChange={(e) => setEntityFilter(e.target.value as 'all' | 'phrases' | 'packs' | 'characters')}>
+            <option value="all">All entities</option>
+            <option value="phrases">Phrases</option>
+            <option value="packs">Packs</option>
+            <option value="characters">Characters</option>
+          </select>
+          <select style={inputStyle} value={relevanceFilter} onChange={(e) => setRelevanceFilter(e.target.value as 'all' | 'positive' | 'negative')}>
+            <option value="all">All relevance</option>
+            <option value="positive">Positive</option>
+            <option value="negative">Negative</option>
+          </select>
+          <select style={inputStyle} value={loraFilter} onChange={(e) => setLoraFilter(e.target.value as 'all' | 'with' | 'without')}>
+            <option value="all">All LoRA</option>
+            <option value="with">With LoRA</option>
+            <option value="without">Without LoRA</option>
+          </select>
+          <button
+            style={btnGhostStyle}
+            type="button"
+            onClick={() => {
+              setGlobalSearch('')
+              setEntityFilter('all')
+              setRelevanceFilter('all')
+              setLoraFilter('all')
+            }}
+          >
+            Reset
+          </button>
+        </section>
+
         {activeTab === 'dashboard' && (
           <section style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit,minmax(${isNarrow ? 170 : 220}px,1fr))`, gap: 12 }}>
             <StatCard title={t.categoriesCount} value={String(categories.length)} />
@@ -1343,7 +1470,7 @@ function App() {
               </form>
 
               <div style={{ ...scrollAreaStyle, maxHeight: 'min(52vh, calc(100vh - 300px))' }}>
-              {libraryCategoryPhrases.map((p) => (
+              {filteredLibraryPhrases.map((p) => (
                 <div key={`cat-${p.id}`} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                   <div
                     draggable
@@ -1372,7 +1499,7 @@ function App() {
                   </div>
                 </div>
               ))}
-              {libraryCategoryPhrases.length === 0 && <span style={{ color: ui.muted }}>{t.noPhrases}</span>}
+              {filteredLibraryPhrases.length === 0 && <span style={{ color: ui.muted }}>{t.noPhrases}</span>}
               </div>
 
             </Panel>
@@ -1423,7 +1550,7 @@ function App() {
                 </select>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {composerCategoryPhrases.map((p) => (
+                {filteredComposerPhrases.map((p) => (
                   <div key={`picker-${p.id}`} style={{ position: 'relative' }}>
                     <button
                       type="button"
@@ -1450,7 +1577,7 @@ function App() {
                     )}
                   </div>
                 ))}
-                {composerCategoryPhrases.length === 0 && <span style={{ color: ui.muted }}>{t.noPhrases}</span>}
+                {filteredComposerPhrases.length === 0 && <span style={{ color: ui.muted }}>{t.noPhrases}</span>}
               </div>
             </Panel>
 
@@ -1486,7 +1613,7 @@ function App() {
                     onChange={(e) => setSelectedPackId(e.target.value ? Number(e.target.value) : null)}
                   >
                     <option value="">Select pack</option>
-                    {packs.map((pack) => (
+                    {filteredPacks.map((pack) => (
                       <option key={pack.id} value={pack.id}>{pack.name}</option>
                     ))}
                   </select>
@@ -1515,7 +1642,7 @@ function App() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {packCoverage.map(({ pack, percent, complete }) => (
+                  {packCoverage.filter(({ pack }) => filteredPacks.some((fp) => fp.id === pack.id)).map(({ pack, percent, complete }) => (
                     <div
                       key={pack.id}
                       style={{
@@ -1546,7 +1673,7 @@ function App() {
                       </button>
                     </div>
                   ))}
-                  {packs.length === 0 && <span style={{ color: ui.muted }}>No packs yet.</span>}
+                  {filteredPacks.length === 0 && <span style={{ color: ui.muted }}>No packs yet.</span>}
                 </div>
               </div>
             </Panel>
@@ -1626,8 +1753,8 @@ function App() {
               <button style={btnStyle} type="submit">{t.saveAsCharacter}</button>
             </form>
 
-            <div style={{ ...scrollAreaStyle, maxHeight: characters.length > 4 ? 360 : undefined, overflowY: characters.length > 4 ? 'auto' : 'hidden' }}>
-            {characters.map((character) => (
+            <div style={{ ...scrollAreaStyle, maxHeight: filteredCharacters.length > 4 ? 360 : undefined, overflowY: filteredCharacters.length > 4 ? 'auto' : 'hidden' }}>
+            {filteredCharacters.map((character) => (
               <div key={character.id} style={{ borderTop: `1px solid ${ui.border}`, padding: '10px 0' }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <strong>{character.name}</strong>
