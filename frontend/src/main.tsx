@@ -699,27 +699,21 @@ function App() {
     const trimmed = raw.trim()
     if (!trimmed) return null
 
+    // Category marker-only token like [face] should be ignored completely.
+    if (/^\[[^\]]+\]$/.test(trimmed)) return null
+
     let next = trimmed
     let hasWeight = false
 
-    next = next.replace(/\[[^\]]*\]/g, ' ').trim()
-    if (!next) return null
+    // Drop any square-bracket segments ([de-emphasis], [category], etc.)
+    next = next.replace(/\[[^\]]*\]/g, ' ')
 
-    const wrappedWeighted = next.match(/^\((.+):\s*[-+]?\d*\.?\d+\)$/)
-    if (wrappedWeighted) {
-      next = wrappedWeighted[1].trim()
-      hasWeight = true
-    }
+    // Strip weight syntax anywhere in token, e.g. :1.2
+    if (/:\s*[-+]?\d*\.?\d+\b/.test(next)) hasWeight = true
+    next = next.replace(/:\s*[-+]?\d*\.?\d+\b/g, ' ')
 
-    const plainWeighted = next.match(/^(.+):\s*[-+]?\d*\.?\d+$/)
-    if (plainWeighted) {
-      next = plainWeighted[1].trim()
-      hasWeight = true
-    }
-
-    while ((next.startsWith('(') && next.endsWith(')')) || (next.startsWith('{') && next.endsWith('}'))) {
-      next = next.slice(1, -1).trim()
-    }
+    // Remove all bracket characters that may remain.
+    next = next.replace(/[(){}<>]/g, ' ')
 
     next = next.replace(/\s+/g, ' ').trim()
     if (!next) return null
