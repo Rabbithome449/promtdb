@@ -1025,6 +1025,18 @@ function App() {
     setActivePackIds((curr) => curr.filter((id) => id !== packId))
   }
 
+  async function updatePackFromComposer(packId: number) {
+    await api(`/packs/${packId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        positive_parts: positiveParts.map((p) => ({ text: p.text, weight: p.weight ?? 1, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
+        negative_parts: negativeParts.map((p) => ({ text: p.text, weight: p.weight ?? 1, category: p.category, is_important: p.isImportant, is_recurring: p.isRecurring, required_lora: p.requiredLora })),
+      }),
+    })
+    setActivePackIds((curr) => (curr.includes(packId) ? curr : [...curr, packId]))
+    await loadAll()
+  }
+
   async function deletePack(id: number) {
     if (!window.confirm('Delete pack?')) return
     await api(`/packs/${id}`, { method: 'DELETE' })
@@ -1536,6 +1548,16 @@ function App() {
                       >
                         {complete ? '✅' : '🧩'} {pack.name} ({percent}%)
                       </button>
+                      {percent > 0 && percent < 100 && (
+                        <button
+                          style={{ ...btnGhostStyle, borderRadius: 999, padding: '2px 6px' }}
+                          type="button"
+                          onClick={() => void updatePackFromComposer(pack.id)}
+                          title="Update this pack from current composer phrases"
+                        >
+                          Aktualisieren
+                        </button>
+                      )}
                       <button
                         style={{ ...btnGhostStyle, borderRadius: 999, padding: '2px 6px' }}
                         type="button"
