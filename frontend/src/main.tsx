@@ -199,6 +199,8 @@ function App() {
   const [phraseModalCategoryId, setPhraseModalCategoryId] = useState<number | null>(null)
   const [importPromptText, setImportPromptText] = useState('')
   const [importingPrompt, setImportingPrompt] = useState(false)
+  const [isImportPreviewOpen, setIsImportPreviewOpen] = useState(false)
+  const [importPreviewItems, setImportPreviewItems] = useState<Array<{ text: string, status: 'create' | 'skip-duplicate' | 'ignore' }>>([])
   const [isPhraseModalOpen, setIsPhraseModalOpen] = useState(false)
   const [editingPhraseId, setEditingPhraseId] = useState<number | null>(null)
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
@@ -725,8 +727,40 @@ function App() {
     return { text: next, hasWeight }
   }
 
-  async function importPromptPhrases(e: React.FormEvent) {
-    e.preventDefault()
+  function buildImportPreview() {
+    const existing = new Set(phrases.map((p) => normalizeText(p.text)).filter(Boolean))
+    const seenNew = new Set<string>()
+    const parsed = splitPromptParts(importPromptText).map(parsePromptPhrase)
+
+    const preview: Array<{ text: string, status: 'create' | 'skip-duplicate' | 'ignore' }> = []
+    for (const item of parsed) {
+      if (!item || !item.text.trim()) {
+        preview.push({ text: '', status: 'ignore' })
+        continue
+      }
+      const key = normalizeText(item.text)
+      if (!key || existing.has(key) || seenNew.has(key)) {
+        preview.push({ text: item.text, status: 'skip-duplicate' })
+        continue
+      }
+      seenNew.add(key)
+      preview.push({ text: item.text, status: 'create' })
+    }
+    return preview
+  }
+
+  function openImportPreview() {
+    if (!importPromptText.trim()) return
+    setImportPreviewItems(buildImportPreview())
+    setIsImportPreviewOpen(true)
+  }
+
+  function closeImportPreview() {
+    setIsImportPreviewOpen(false)
+    setImportPreviewItems([])
+  }
+
+  async function executePromptImport() {
     if (!importPromptText.trim()) return
     setImportingPrompt(true)
     try {
@@ -766,10 +800,16 @@ function App() {
         nextSortOrder += 1
       }
       setImportPromptText('')
+      closeImportPreview()
       await loadAll()
     } finally {
       setImportingPrompt(false)
     }
+  }
+
+  async function importPromptPhrases(e: React.FormEvent) {
+    e.preventDefault()
+    await executePromptImport()
   }
 
   async function submitPhraseForm(e: React.FormEvent) {
@@ -1298,9 +1338,14 @@ function App() {
                   onChange={(e) => setImportPromptText(e.target.value)}
                   placeholder={language === 'de' ? 'Prompt hier einfügen, Phrasen werden automatisch angelegt' : 'Paste prompt here, phrases will be created automatically'}
                 />
-                <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId || !importPromptText.trim() || importingPrompt}>
-                  {importingPrompt ? (language === 'de' ? 'Import läuft...' : 'Importing...') : (language === 'de' ? 'Prompt importieren' : 'Import prompt')}
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button style={btnGhostStyle} type="button" disabled={!importPromptText.trim() || importingPrompt} onClick={openImportPreview}>
+                    {language === 'de' ? 'Import-Vorschau' : 'Import preview'}
+                  </button>
+                  <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId || !importPromptText.trim() || importingPrompt}>
+                    {importingPrompt ? (language === 'de' ? 'Import läuft...' : 'Importing...') : (language === 'de' ? 'Prompt importieren' : 'Import prompt')}
+                  </button>
+                </div>
               </form>
 
               <div style={{ ...scrollAreaStyle, maxHeight: 'min(52vh, calc(100vh - 300px))' }}>
@@ -1608,6 +1653,39 @@ function App() {
             ))}
             </div>
           </Panel>
+        )}
+
+        {isImportPreviewOpen && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(9,15,27,0.72)', display: 'grid', placeItems: 'center', zIndex: 49, padding: 16 }}>
+            <div style={{ width: 'min(760px, 100%)', background: ui.panel, border: `1px solid ${ui.border}`, borderRadius: 14, padding: 14, boxShadow: ui.shadow }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <h3 style={{ margin: 0 }}>{language === 'de' ? 'Import Vorschau' : 'Import preview'}</h3>
+                <button style={btnGhostStyle} onClick={closeImportPreview}>✕</button>
+              </div>
+              <div style={{ maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
+                {importPreviewItems.map((item, idx) => (
+                  <div key={`preview-${idx}`} style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
+                    <span style={{ color: item.status === 'create' ? ui.ok : item.status === 'skip-duplicate' ? ui.warn : ui.muted, minWidth: 140 }}>
+                      {item.status === 'create' ? (language === 'de' ? 'Erstellen' : 'Create') : item.status === 'skip-duplicate' ? (language === 'de' ? 'Überspringen (Duplikat)' : 'Skip (duplicate)') : (language === 'de' ? 'Ignorieren' : 'Ignore')}
+                    </span>
+                    <span style={{ color: ui.text }}>{item.text || '—'}</span>
+                  </div>
+                ))}
+                {importPreviewItems.length === 0 && <p style={{ color: ui.muted }}>{language === 'de' ? 'Keine Einträge in der Vorschau.' : 'No items in preview.'}</p>}
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                <button style={btnGhostStyle} onClick={closeImportPreview}>{t.cancel}</button>
+                <button
+                  style={btnStyle}
+                  type="button"
+                  onClick={() => { void executePromptImport() }}
+                  disabled={!effectivePhraseCategoryId || !importPromptText.trim() || importingPrompt}
+                >
+                  {language === 'de' ? 'Jetzt importieren' : 'Import now'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {isPhraseModalOpen && (
