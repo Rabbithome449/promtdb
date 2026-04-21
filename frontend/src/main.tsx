@@ -397,8 +397,6 @@ function App() {
     paddingRight: 4,
     scrollbarWidth: 'none',
     msOverflowStyle: 'none',
-    backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.12), transparent 12px), linear-gradient(to top, rgba(255,255,255,0.12), transparent 12px)',
-    backgroundAttachment: 'local, local',
   }
 
   const categoryNameById = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
@@ -1762,8 +1760,6 @@ function ComposerList({
           minHeight: 42,
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
-          backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.12), transparent 10px), linear-gradient(to top, rgba(255,255,255,0.12), transparent 10px)',
-          backgroundAttachment: 'local, local',
         }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={() => { droppedInsideRef.current = true }}
