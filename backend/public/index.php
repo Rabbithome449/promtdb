@@ -125,6 +125,21 @@ function initSchema(PDO $pdo): void {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS app_user (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(255) NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role VARCHAR(32) NOT NULL DEFAULT 'user',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS app_config (
+        key VARCHAR(120) PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )");
 }
 
 function normalizeName(string $value): string {
@@ -136,10 +151,22 @@ function inferVersionFamily(string $name): string {
     return preg_replace('/_v\d+$/', '', $clean) ?: $clean;
 }
 
-$authUser = getenv('PROMPTDB_USER') ?: 'promptdb';
-$authPass = getenv('PROMPTDB_PASS') ?: 'promptdb';
+$defaultAdminUser = getenv('PROMPTDB_DEFAULT_ADMIN_USER') ?: 'promptdb';
+$defaultAdminPass = getenv('PROMPTDB_DEFAULT_ADMIN_PASS') ?: 'promptdb';
 $tokenTtlHours = (int) (getenv('PROMPTDB_TOKEN_TTL_HOURS') ?: '24');
 $tokenFile = sys_get_temp_dir() . '/promtdb_php_tokens.json';
+
+function ensureDefaultAdmin(PDO $pdo, string $username, string $password): void {
+    $count = (int)($pdo->query('SELECT COUNT(*) FROM app_user')->fetchColumn() ?: 0);
+    if ($count > 0) return;
+    $stmt = $pdo->prepare('INSERT INTO app_user(username,password_hash,role,created_at,updated_at) VALUES (:username,:password_hash,:role,:now,:now)');
+    $stmt->execute([
+        ':username' => trim($username),
+        ':password_hash' => password_hash($password, PASSWORD_BCRYPT),
+        ':role' => 'admin',
+        ':now' => nowUtc(),
+    ]);
+}
 
 function loadTokens(string $file): array {
     if (!is_file($file)) return [];
@@ -152,18 +179,23 @@ function saveTokens(string $file, array $tokens): void {
     file_put_contents($file, json_encode($tokens));
 }
 
-function issueToken(string $file, int $ttlHours): string {
+function issueToken(string $file, int $ttlHours, array $user): string {
     $tokens = loadTokens($file);
     $token = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
-    $tokens[$token] = (new DateTime('now', new DateTimeZone('UTC')))->modify("+{$ttlHours} hours")->format(DateTimeInterface::ATOM);
+    $tokens[$token] = [
+        'exp' => (new DateTime('now', new DateTimeZone('UTC')))->modify("+{$ttlHours} hours")->format(DateTimeInterface::ATOM),
+        'user_id' => (int)($user['id'] ?? 0),
+        'username' => (string)($user['username'] ?? ''),
+        'role' => (string)($user['role'] ?? 'user'),
+    ];
     saveTokens($file, $tokens);
     return $token;
 }
 
-function requireAuth(string $file): void {
+function requireAuth(string $file): ?array {
     $public = ['/health', '/auth/login'];
     $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-    if (in_array($path, $public, true)) return;
+    if (in_array($path, $public, true)) return null;
 
     $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
     if (!preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
@@ -171,16 +203,32 @@ function requireAuth(string $file): void {
     }
     $token = trim($m[1]);
     $tokens = loadTokens($file);
-    $exp = $tokens[$token] ?? null;
-    if ($exp === null || strtotime((string)$exp) < time()) {
+    $entry = $tokens[$token] ?? null;
+    $exp = is_array($entry) ? ($entry['exp'] ?? null) : $entry;
+    if ($entry === null || $exp === null || strtotime((string)$exp) < time()) {
         unset($tokens[$token]);
         saveTokens($file, $tokens);
         errorResponse(401, 'UNAUTHORIZED', 'Unauthorized');
     }
+    if (!is_array($entry)) {
+        errorResponse(401, 'UNAUTHORIZED', 'Unauthorized');
+    }
+    return [
+        'id' => (int)($entry['user_id'] ?? 0),
+        'username' => (string)($entry['username'] ?? ''),
+        'role' => (string)($entry['role'] ?? 'user'),
+    ];
 }
 
-requireAuth($tokenFile);
+function requireAdmin(?array $currentUser): void {
+    if (!$currentUser || ($currentUser['role'] ?? '') !== 'admin') {
+        errorResponse(403, 'FORBIDDEN', 'Admin permissions required');
+    }
+}
+
+$currentUser = requireAuth($tokenFile);
 $pdo = pdo();
+ensureDefaultAdmin($pdo, $defaultAdminUser, $defaultAdminPass);
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $payload = jsonInput();
@@ -193,15 +241,92 @@ try {
     if ($method === 'POST' && $path === '/auth/login') {
         $username = trim((string)($payload['username'] ?? ''));
         $password = (string)($payload['password'] ?? '');
-        if ($username !== $authUser || $password !== $authPass) {
+        $stmt = $pdo->prepare('SELECT * FROM app_user WHERE username=:username');
+        $stmt->execute([':username' => $username]);
+        $user = $stmt->fetch();
+        if (!$user || !password_verify($password, (string)$user['password_hash'])) {
             errorResponse(401, 'INVALID_CREDENTIALS', 'Invalid credentials');
         }
-        $token = issueToken($tokenFile, $tokenTtlHours);
-        respond(200, ['token' => $token, 'token_type' => 'bearer', 'expires_in_seconds' => $tokenTtlHours * 3600, 'user' => $authUser]);
+        $token = issueToken($tokenFile, $tokenTtlHours, $user);
+        respond(200, ['token' => $token, 'token_type' => 'bearer', 'expires_in_seconds' => $tokenTtlHours * 3600, 'user' => $user['username'], 'role' => $user['role']]);
     }
 
     if ($method === 'GET' && $path === '/auth/me') {
-        respond(200, ['user' => $authUser]);
+        if (!$currentUser) errorResponse(401, 'UNAUTHORIZED', 'Unauthorized');
+        respond(200, ['user' => $currentUser['username'], 'role' => $currentUser['role']]);
+    }
+
+    if ($method === 'GET' && $path === '/users') {
+        requireAdmin($currentUser);
+        $rows = $pdo->query('SELECT id, username, role, created_at, updated_at FROM app_user ORDER BY id')->fetchAll();
+        respond(200, $rows);
+    }
+
+    if ($method === 'POST' && $path === '/users') {
+        requireAdmin($currentUser);
+        $username = trim((string)($payload['username'] ?? ''));
+        $password = (string)($payload['password'] ?? '');
+        $role = (string)($payload['role'] ?? 'user');
+        if ($username === '' || $password === '') errorResponse(400, 'INVALID_USER_PAYLOAD', 'username and password are required');
+        if (!in_array($role, ['admin', 'user'], true)) errorResponse(400, 'INVALID_ROLE', 'role must be admin or user');
+        $stmt = $pdo->prepare('INSERT INTO app_user(username,password_hash,role,created_at,updated_at) VALUES (:username,:password_hash,:role,:now,:now) RETURNING id, username, role, created_at, updated_at');
+        $stmt->execute([
+            ':username' => $username,
+            ':password_hash' => password_hash($password, PASSWORD_BCRYPT),
+            ':role' => $role,
+            ':now' => nowUtc(),
+        ]);
+        respond(200, $stmt->fetch());
+    }
+
+    if (preg_match('#^/users/(\d+)$#', $path, $m)) {
+        requireAdmin($currentUser);
+        $id = (int)$m[1];
+        if ($method === 'PATCH') {
+            $get = $pdo->prepare('SELECT * FROM app_user WHERE id=:id');
+            $get->execute([':id' => $id]);
+            $curr = $get->fetch();
+            if (!$curr) errorResponse(404, 'USER_NOT_FOUND', 'User not found');
+            $username = array_key_exists('username', $payload) ? trim((string)$payload['username']) : (string)$curr['username'];
+            $role = array_key_exists('role', $payload) ? (string)$payload['role'] : (string)$curr['role'];
+            $passwordHash = (string)$curr['password_hash'];
+            if (array_key_exists('password', $payload) && trim((string)$payload['password']) !== '') {
+                $passwordHash = password_hash((string)$payload['password'], PASSWORD_BCRYPT);
+            }
+            if (!in_array($role, ['admin', 'user'], true)) errorResponse(400, 'INVALID_ROLE', 'role must be admin or user');
+            $stmt = $pdo->prepare('UPDATE app_user SET username=:username, role=:role, password_hash=:password_hash, updated_at=:now WHERE id=:id RETURNING id, username, role, created_at, updated_at');
+            $stmt->execute([':username' => $username, ':role' => $role, ':password_hash' => $passwordHash, ':now' => nowUtc(), ':id' => $id]);
+            respond(200, $stmt->fetch());
+        }
+        if ($method === 'DELETE') {
+            if (($currentUser['id'] ?? 0) === $id) errorResponse(400, 'CANNOT_DELETE_SELF', 'Cannot delete current admin user');
+            $stmt = $pdo->prepare('DELETE FROM app_user WHERE id=:id');
+            $stmt->execute([':id' => $id]);
+            if ($stmt->rowCount() === 0) errorResponse(404, 'USER_NOT_FOUND', 'User not found');
+            respond(200, ['ok' => true]);
+        }
+    }
+
+    if ($method === 'GET' && $path === '/config') {
+        requireAdmin($currentUser);
+        $rows = $pdo->query('SELECT key, value FROM app_config ORDER BY key')->fetchAll();
+        $out = [];
+        foreach ($rows as $r) $out[$r['key']] = $r['value'];
+        respond(200, $out);
+    }
+
+    if ($method === 'PATCH' && $path === '/config') {
+        requireAdmin($currentUser);
+        $updates = (array)($payload['values'] ?? $payload);
+        foreach ($updates as $k => $v) {
+            if (!is_string($k) || trim($k) === '') continue;
+            $stmt = $pdo->prepare('INSERT INTO app_config(key,value,updated_at) VALUES (:key,:value,:now) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at');
+            $stmt->execute([':key' => $k, ':value' => is_scalar($v) ? (string)$v : json_encode($v), ':now' => nowUtc()]);
+        }
+        $rows = $pdo->query('SELECT key, value FROM app_config ORDER BY key')->fetchAll();
+        $out = [];
+        foreach ($rows as $r) $out[$r['key']] = $r['value'];
+        respond(200, $out);
     }
 
     if ($method === 'GET' && $path === '/categories') {

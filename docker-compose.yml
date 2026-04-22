@@ -15,8 +15,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://promtdb:promtdb@db:5432/promtdb
       CORS_ORIGINS: "*"
-      PROMPTDB_USER: promptdb
-      PROMPTDB_PASS: promptdb
+      PROMPTDB_DEFAULT_ADMIN_USER: promptdb
+      PROMPTDB_DEFAULT_ADMIN_PASS: promptdb
     depends_on:
       - db
     ports:
