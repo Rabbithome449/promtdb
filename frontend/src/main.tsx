@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
-type TabKey = 'dashboard' | 'library' | 'composer' | 'characters'
+type TabKey = 'dashboard' | 'library' | 'composer' | 'characters' | 'profile'
 
 type Category = {
   id: number
@@ -66,6 +66,14 @@ type ComposerItem = {
   isImportant?: boolean
   isRecurring?: boolean
   requiredLora?: string
+}
+
+type AppUser = {
+  id: number
+  username: string
+  role: 'admin' | 'user'
+  created_at?: string
+  updated_at?: string
 }
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
@@ -179,6 +187,8 @@ function App() {
   const [loginUser, setLoginUser] = useState('promptdb')
   const [loginPass, setLoginPass] = useState('promptdb')
   const [loginError, setLoginError] = useState<string | null>(null)
+  const [currentUsername, setCurrentUsername] = useState<string>('')
+  const [currentRole, setCurrentRole] = useState<'admin' | 'user' | null>(null)
   const [language, setLanguage] = useState<'de' | 'en'>('de')
 
   const [categories, setCategories] = useState<Category[]>([])
@@ -226,6 +236,7 @@ function App() {
       library: 'Library',
       composer: 'Composer',
       characters: 'Characters',
+      profile: 'Profil',
       categories: 'Kategorien',
       add: 'Hinzufügen',
       newCategory: 'Neue Kategorie',
@@ -307,6 +318,7 @@ function App() {
       library: 'Library',
       composer: 'Composer',
       characters: 'Characters',
+      profile: 'Profile',
       categories: 'Categories',
       add: 'Add',
       newCategory: 'New category',
@@ -413,6 +425,11 @@ function App() {
 
   const [positiveParts, setPositiveParts] = useState<ComposerItem[]>([])
   const [negativeParts, setNegativeParts] = useState<ComposerItem[]>([])
+  const [adminUsers, setAdminUsers] = useState<AppUser[]>([])
+  const [adminConfigJson, setAdminConfigJson] = useState<string>('{}')
+  const [newAdminUsername, setNewAdminUsername] = useState('')
+  const [newAdminPassword, setNewAdminPassword] = useState('')
+  const [newAdminRole, setNewAdminRole] = useState<'admin' | 'user'>('user')
   const isMobile = viewportWidth < 900
   const isNarrow = viewportWidth < 640
   const scrollAreaStyle: React.CSSProperties = {
@@ -624,20 +641,34 @@ function App() {
     setLoading(true)
     setError(null)
     try {
-      const [c, p, pr, pa, ch] = await Promise.all([
+      const [c, p, pr, pa, ch, me] = await Promise.all([
         api<Category[]>('/categories'),
         api<Phrase[]>('/phrases'),
         api<Preset[]>('/presets'),
         api<Pack[]>('/packs'),
         api<CharacterPreset[]>('/characters'),
+        api<{ user: string, role?: 'admin' | 'user' }>('/auth/me'),
       ])
       setCategories(c)
       setPhrases(p)
       setPresets(pr)
       setPacks(pa)
       setCharacters(ch)
+      setCurrentUsername(me.user)
+      setCurrentRole(me.role ?? 'user')
       if (librarySelectedCategoryId === null && c.length > 0) setLibrarySelectedCategoryId(c[0].id)
       if (composerSelectedCategoryId === null && c.length > 0) setComposerSelectedCategoryId(c[0].id)
+      if ((me.role ?? 'user') === 'admin') {
+        const [users, config] = await Promise.all([
+          api<AppUser[]>('/users'),
+          api<Record<string, string>>('/config'),
+        ])
+        setAdminUsers(users)
+        setAdminConfigJson(JSON.stringify(config, null, 2))
+      } else {
+        setAdminUsers([])
+        setAdminConfigJson('{}')
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error'
       if (msg === 'UNAUTHORIZED') {
@@ -1257,8 +1288,10 @@ function App() {
         setLoginError(t.loginFailed)
         return
       }
-      const data = (await res.json()) as { token: string }
+      const data = (await res.json()) as { token: string, user?: string, role?: 'admin' | 'user' }
       localStorage.setItem('promptdb_token', data.token)
+      setCurrentUsername(data.user ?? '')
+      setCurrentRole(data.role ?? null)
       setIsAuthenticated(true)
       void loadAll()
     } catch {
@@ -1269,6 +1302,53 @@ function App() {
   function logout() {
     localStorage.removeItem('promptdb_token')
     setIsAuthenticated(false)
+    setCurrentUsername('')
+    setCurrentRole(null)
+    setAdminUsers([])
+    setAdminConfigJson('{}')
+  }
+
+  async function refreshAdminData() {
+    if (currentRole !== 'admin') return
+    const [users, config] = await Promise.all([
+      api<AppUser[]>('/users'),
+      api<Record<string, string>>('/config'),
+    ])
+    setAdminUsers(users)
+    setAdminConfigJson(JSON.stringify(config, null, 2))
+  }
+
+  async function saveAdminConfig() {
+    if (currentRole !== 'admin') return
+    const parsed = JSON.parse(adminConfigJson || '{}')
+    const config = await api<Record<string, string>>('/config', { method: 'PATCH', body: JSON.stringify(parsed) })
+    setAdminConfigJson(JSON.stringify(config, null, 2))
+  }
+
+  async function createAdminUser() {
+    if (currentRole !== 'admin') return
+    if (!newAdminUsername.trim() || !newAdminPassword.trim()) return
+    await api<AppUser>('/users', {
+      method: 'POST',
+      body: JSON.stringify({ username: newAdminUsername.trim(), password: newAdminPassword, role: newAdminRole }),
+    })
+    setNewAdminUsername('')
+    setNewAdminPassword('')
+    setNewAdminRole('user')
+    await refreshAdminData()
+  }
+
+  async function updateAdminUserRole(id: number, role: 'admin' | 'user') {
+    if (currentRole !== 'admin') return
+    await api<AppUser>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify({ role }) })
+    await refreshAdminData()
+  }
+
+  async function deleteAdminUser(id: number) {
+    if (currentRole !== 'admin') return
+    if (!window.confirm('Delete user?')) return
+    await api(`/users/${id}`, { method: 'DELETE' })
+    await refreshAdminData()
   }
 
   return (
@@ -1316,6 +1396,7 @@ function App() {
             ['library', t.library],
             ['composer', t.composer],
             ['characters', t.characters],
+            ['profile', t.profile],
           ].map(([k, label]) => (
             <button
               key={k}
@@ -1331,7 +1412,7 @@ function App() {
                 boxShadow: activeTab === k ? '0 0 0 3px rgba(94,162,255,0.2)' : 'none',
               }}
             >
-              {k === 'dashboard' ? '📊 ' : k === 'library' ? '📚 ' : k === 'composer' ? '🧩 ' : '🧬 '}{label}
+              {k === 'dashboard' ? '📊 ' : k === 'library' ? '📚 ' : k === 'composer' ? '🧩 ' : k === 'characters' ? '🧬 ' : '👤 '}{label}
             </button>
           ))}
         </nav>
@@ -1841,6 +1922,53 @@ function App() {
                 </div>
               </div>
             ))}
+            </div>
+          </Panel>
+        )}
+
+        {activeTab === 'profile' && (
+          <Panel title={t.profile}>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div><strong>Username:</strong> {currentUsername || '-'}</div>
+              <div><strong>Role:</strong> {currentRole || '-'}</div>
+
+              {currentRole === 'admin' && (
+                <>
+                  <section style={{ borderTop: `1px solid ${ui.border}`, paddingTop: 10 }}>
+                    <h4 style={{ margin: '0 0 8px' }}>Global config</h4>
+                    <textarea style={textareaStyle} rows={8} value={adminConfigJson} onChange={(e) => setAdminConfigJson(e.target.value)} />
+                    <div style={{ marginTop: 8 }}>
+                      <button style={btnStyle} onClick={() => void saveAdminConfig()}>Save config</button>
+                    </div>
+                  </section>
+
+                  <section style={{ borderTop: `1px solid ${ui.border}`, paddingTop: 10 }}>
+                    <h4 style={{ margin: '0 0 8px' }}>User management</h4>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                      <input style={inputStyle} placeholder="username" value={newAdminUsername} onChange={(e) => setNewAdminUsername(e.target.value)} />
+                      <input style={inputStyle} type="password" placeholder="password" value={newAdminPassword} onChange={(e) => setNewAdminPassword(e.target.value)} />
+                      <select style={inputStyle} value={newAdminRole} onChange={(e) => setNewAdminRole(e.target.value as 'admin' | 'user')}>
+                        <option value="user">user</option>
+                        <option value="admin">admin</option>
+                      </select>
+                      <button style={btnStyle} onClick={() => void createAdminUser()}>Create user</button>
+                    </div>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      {adminUsers.map((u) => (
+                        <div key={`admin-user-${u.id}`} style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: `1px solid ${ui.border}`, paddingTop: 6 }}>
+                          <strong style={{ minWidth: 180 }}>{u.username}</strong>
+                          <select style={inputStyle} value={u.role} onChange={(e) => void updateAdminUserRole(u.id, e.target.value as 'admin' | 'user')}>
+                            <option value="user">user</option>
+                            <option value="admin">admin</option>
+                          </select>
+                          <button style={{ ...btnGhostStyle, borderColor: ui.danger, color: ui.danger }} onClick={() => void deleteAdminUser(u.id)}>Delete</button>
+                        </div>
+                      ))}
+                      {adminUsers.length === 0 && <span style={{ color: ui.muted }}>No users</span>}
+                    </div>
+                  </section>
+                </>
+              )}
             </div>
           </Panel>
         )}
