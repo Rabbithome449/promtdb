@@ -1,13 +1,17 @@
-# Backend (FastAPI)
+# Backend (PHP)
 
 ## Setup
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+php -S 0.0.0.0:8000 -t public
 ```
+
+Environment variables:
+- `DATABASE_URL` (default: `postgresql+psycopg://promtdb:promtdb@localhost:5432/promtdb`)
+- `PROMPTDB_USER` (default: `promptdb`)
+- `PROMPTDB_PASS` (default: `promptdb`)
+- `PROMPTDB_TOKEN_TTL_HOURS` (default: `24`)
+- `CORS_ORIGINS` (default: `*`)
 
 ## Test
 - `GET http://localhost:8000/health`
