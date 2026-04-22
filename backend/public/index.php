@@ -338,7 +338,7 @@ try {
         ]);
     }
 
-    $jsonList = function(string $table): array use ($pdo) {
+    $jsonList = function(string $table) use ($pdo): array {
         $rows = $pdo->query("SELECT * FROM {$table} ORDER BY id DESC")->fetchAll();
         foreach ($rows as &$row) {
             foreach (['positive_parts', 'negative_parts', 'required_loras'] as $k) {
