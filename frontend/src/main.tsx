@@ -208,6 +208,8 @@ function App() {
   const [pendingDeleteCategoryId, setPendingDeleteCategoryId] = useState<number | null>(null)
   const [draggingCategoryId, setDraggingCategoryId] = useState<number | null>(null)
   const [draggingLibraryPhraseId, setDraggingLibraryPhraseId] = useState<number | null>(null)
+  const [selectedLibraryPhraseIds, setSelectedLibraryPhraseIds] = useState<number[]>([])
+  const [bulkMoveCategoryId, setBulkMoveCategoryId] = useState<number | null>(null)
   const [chipMenuPhraseId, setChipMenuPhraseId] = useState<number | null>(null)
   const [draggingPhraseId, setDraggingPhraseId] = useState<number | null>(null)
   const [composerViewTab, setComposerViewTab] = useState<'build' | 'structured' | 'output'>('build')
@@ -929,6 +931,38 @@ function App() {
 
   async function removePhrase(id: number) {
     await api(`/phrases/${id}`, { method: 'DELETE' })
+    setSelectedLibraryPhraseIds((curr) => curr.filter((x) => x !== id))
+    await loadAll()
+  }
+
+  function toggleLibraryPhraseSelected(id: number) {
+    setSelectedLibraryPhraseIds((curr) => (curr.includes(id) ? curr.filter((x) => x !== id) : [...curr, id]))
+  }
+
+  function selectAllVisibleLibraryPhrases() {
+    setSelectedLibraryPhraseIds(filteredLibraryPhrases.map((p) => p.id))
+  }
+
+  function clearLibraryPhraseSelection() {
+    setSelectedLibraryPhraseIds([])
+  }
+
+  async function bulkDeleteSelectedLibraryPhrases() {
+    if (selectedLibraryPhraseIds.length === 0) return
+    if (!window.confirm(`Delete ${selectedLibraryPhraseIds.length} selected phrases?`)) return
+    await Promise.all(selectedLibraryPhraseIds.map((id) => api(`/phrases/${id}`, { method: 'DELETE' })))
+    setSelectedLibraryPhraseIds([])
+    await loadAll()
+  }
+
+  async function bulkMoveSelectedLibraryPhrases() {
+    if (selectedLibraryPhraseIds.length === 0 || bulkMoveCategoryId === null) return
+    await Promise.all(selectedLibraryPhraseIds.map((id) => api(`/phrases/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ category_id: bulkMoveCategoryId }),
+    })))
+    setLibrarySelectedCategoryId(bulkMoveCategoryId)
+    setSelectedLibraryPhraseIds([])
     await loadAll()
   }
 
@@ -1469,6 +1503,36 @@ function App() {
                 </div>
               </form>
 
+              <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button style={btnGhostStyle} type="button" onClick={selectAllVisibleLibraryPhrases} disabled={filteredLibraryPhrases.length === 0}>Select all visible</button>
+                  <button style={btnGhostStyle} type="button" onClick={clearLibraryPhraseSelection} disabled={selectedLibraryPhraseIds.length === 0}>Clear selection</button>
+                  <button
+                    style={{ ...btnGhostStyle, borderColor: ui.danger, color: ui.danger }}
+                    type="button"
+                    onClick={() => void bulkDeleteSelectedLibraryPhrases()}
+                    disabled={selectedLibraryPhraseIds.length === 0}
+                  >
+                    Delete selected ({selectedLibraryPhraseIds.length})
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <select
+                    style={inputStyle}
+                    value={bulkMoveCategoryId ?? ''}
+                    onChange={(e) => setBulkMoveCategoryId(e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">Move selected to category...</option>
+                    {categories.map((c) => (
+                      <option key={`bulk-move-${c.id}`} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <button style={btnStyle} type="button" disabled={selectedLibraryPhraseIds.length === 0 || bulkMoveCategoryId === null} onClick={() => void bulkMoveSelectedLibraryPhrases()}>
+                    Move selected
+                  </button>
+                </div>
+              </div>
+
               <div style={{ ...scrollAreaStyle, maxHeight: 'min(52vh, calc(100vh - 300px))' }}>
               {filteredLibraryPhrases.map((p) => (
                 <div key={`cat-${p.id}`} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
@@ -1493,6 +1557,11 @@ function App() {
                       boxShadow: draggingLibraryPhraseId === p.id ? `0 0 0 2px ${ui.accent}` : 'none',
                     }}
                   >
+                    <input
+                      type="checkbox"
+                      checked={selectedLibraryPhraseIds.includes(p.id)}
+                      onChange={() => toggleLibraryPhraseSelected(p.id)}
+                    />
                     <strong style={{ flex: 1, textAlign: 'left' }}>{p.text}</strong>
                     <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => openEditPhraseModal(p)} title="Edit">✏️</button>
                     <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => removePhrase(p.id)} title="Delete">✕</button>
