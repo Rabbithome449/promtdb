@@ -343,6 +343,157 @@ try {
         respond(200, $out);
     }
 
+    if ($method === 'POST' && $path === '/import/all') {
+        requireAdmin($currentUser);
+        $data = isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : $payload;
+        if (!is_array($data)) errorResponse(400, 'INVALID_IMPORT_PAYLOAD', 'Import payload must be a JSON object');
+
+        $categories = is_array($data['categories'] ?? null) ? $data['categories'] : [];
+        $phrases = is_array($data['phrases'] ?? null) ? $data['phrases'] : [];
+        $presets = is_array($data['presets'] ?? null) ? $data['presets'] : [];
+        $packs = is_array($data['packs'] ?? null) ? $data['packs'] : [];
+        $characters = is_array($data['characters'] ?? null) ? $data['characters'] : [];
+
+        $counts = ['categories' => 0, 'phrases' => 0, 'presets' => 0, 'packs' => 0, 'characters' => 0];
+
+        $resetSeq = function(string $table) use ($pdo): void {
+            $sql = "SELECT setval(pg_get_serial_sequence('{$table}','id'), COALESCE((SELECT MAX(id) FROM {$table}), 1), (SELECT COUNT(*) > 0 FROM {$table}))";
+            $pdo->query($sql);
+        };
+
+        $now = nowUtc();
+        $pdo->beginTransaction();
+        try {
+            $pdo->exec('DELETE FROM phrase');
+            $pdo->exec('DELETE FROM category');
+            $pdo->exec('DELETE FROM promptpreset');
+            $pdo->exec('DELETE FROM composerpack');
+            $pdo->exec('DELETE FROM characterpreset');
+
+            $insertCategory = $pdo->prepare('INSERT INTO category(id,name,sort_order,created_at,updated_at) VALUES (:id,:name,:sort,:created_at,:updated_at)');
+            foreach ($categories as $row) {
+                if (!is_array($row)) continue;
+                $id = max(1, (int)($row['id'] ?? 0));
+                $name = trim((string)($row['name'] ?? ''));
+                if ($name === '') continue;
+                $insertCategory->execute([
+                    ':id' => $id,
+                    ':name' => $name,
+                    ':sort' => (int)($row['sort_order'] ?? 0),
+                    ':created_at' => (string)($row['created_at'] ?? $now),
+                    ':updated_at' => (string)($row['updated_at'] ?? $now),
+                ]);
+                $counts['categories']++;
+            }
+
+            $insertPhrase = $pdo->prepare('INSERT INTO phrase(id,category_id,text,default_weight,is_negative_default,notes,required_lora,sort_order,created_at,updated_at) VALUES (:id,:category_id,:text,:default_weight,CAST(:is_negative_default AS BOOLEAN),:notes,:required_lora,:sort,:created_at,:updated_at)');
+            foreach ($phrases as $row) {
+                if (!is_array($row)) continue;
+                $id = max(1, (int)($row['id'] ?? 0));
+                $categoryId = max(1, (int)($row['category_id'] ?? 0));
+                $text = trim((string)($row['text'] ?? ''));
+                if ($text === '') continue;
+                $defaultWeightRaw = array_key_exists('default_weight', $row) ? $row['default_weight'] : null;
+                if ($defaultWeightRaw === '' || $defaultWeightRaw === null) {
+                    $defaultWeight = null;
+                } elseif (is_numeric($defaultWeightRaw)) {
+                    $defaultWeight = (float)$defaultWeightRaw;
+                } else {
+                    $defaultWeight = null;
+                }
+                $isNegativeDefaultRaw = $row['is_negative_default'] ?? false;
+                if (is_string($isNegativeDefaultRaw)) {
+                    $v = strtolower(trim($isNegativeDefaultRaw));
+                    $isNegativeDefault = in_array($v, ['1', 'true', 'yes', 'on'], true);
+                } else {
+                    $isNegativeDefault = (bool)$isNegativeDefaultRaw;
+                }
+                $insertPhrase->execute([
+                    ':id' => $id,
+                    ':category_id' => $categoryId,
+                    ':text' => $text,
+                    ':default_weight' => $defaultWeight,
+                    ':is_negative_default' => $isNegativeDefault ? 'true' : 'false',
+                    ':notes' => array_key_exists('notes', $row) ? $row['notes'] : null,
+                    ':required_lora' => array_key_exists('required_lora', $row) ? $row['required_lora'] : null,
+                    ':sort' => (int)($row['sort_order'] ?? 0),
+                    ':created_at' => (string)($row['created_at'] ?? $now),
+                    ':updated_at' => (string)($row['updated_at'] ?? $now),
+                ]);
+                $counts['phrases']++;
+            }
+
+            $insertPreset = $pdo->prepare('INSERT INTO promptpreset(id,name,positive_parts,negative_parts,created_at,updated_at) VALUES (:id,:name,:positive_parts,:negative_parts,:created_at,:updated_at)');
+            foreach ($presets as $row) {
+                if (!is_array($row)) continue;
+                $id = max(1, (int)($row['id'] ?? 0));
+                $name = trim((string)($row['name'] ?? ''));
+                if ($name === '') continue;
+                $insertPreset->execute([
+                    ':id' => $id,
+                    ':name' => $name,
+                    ':positive_parts' => json_encode(is_array($row['positive_parts'] ?? null) ? $row['positive_parts'] : []),
+                    ':negative_parts' => json_encode(is_array($row['negative_parts'] ?? null) ? $row['negative_parts'] : []),
+                    ':created_at' => (string)($row['created_at'] ?? $now),
+                    ':updated_at' => (string)($row['updated_at'] ?? $now),
+                ]);
+                $counts['presets']++;
+            }
+
+            $insertPack = $pdo->prepare('INSERT INTO composerpack(id,name,positive_parts,negative_parts,created_at,updated_at) VALUES (:id,:name,:positive_parts,:negative_parts,:created_at,:updated_at)');
+            foreach ($packs as $row) {
+                if (!is_array($row)) continue;
+                $id = max(1, (int)($row['id'] ?? 0));
+                $name = trim((string)($row['name'] ?? ''));
+                if ($name === '') continue;
+                $insertPack->execute([
+                    ':id' => $id,
+                    ':name' => $name,
+                    ':positive_parts' => json_encode(is_array($row['positive_parts'] ?? null) ? $row['positive_parts'] : []),
+                    ':negative_parts' => json_encode(is_array($row['negative_parts'] ?? null) ? $row['negative_parts'] : []),
+                    ':created_at' => (string)($row['created_at'] ?? $now),
+                    ':updated_at' => (string)($row['updated_at'] ?? $now),
+                ]);
+                $counts['packs']++;
+            }
+
+            $insertCharacter = $pdo->prepare('INSERT INTO characterpreset(id,name,version_family,version,description,required_sdxl_base_model,recommended_sdxl_base_model,positive_prompt,negative_prompt,positive_parts,negative_parts,required_loras,created_at,updated_at) VALUES (:id,:name,:version_family,:version,:description,:required,:recommended,:positive_prompt,:negative_prompt,:positive_parts,:negative_parts,:required_loras,:created_at,:updated_at)');
+            foreach ($characters as $row) {
+                if (!is_array($row)) continue;
+                $id = max(1, (int)($row['id'] ?? 0));
+                $name = trim((string)($row['name'] ?? ''));
+                if ($name === '') continue;
+                $insertCharacter->execute([
+                    ':id' => $id,
+                    ':name' => $name,
+                    ':version_family' => trim((string)($row['version_family'] ?? inferVersionFamily($name))),
+                    ':version' => max(1, (int)($row['version'] ?? 1)),
+                    ':description' => array_key_exists('description', $row) ? $row['description'] : null,
+                    ':required' => array_key_exists('required_sdxl_base_model', $row) ? $row['required_sdxl_base_model'] : null,
+                    ':recommended' => array_key_exists('recommended_sdxl_base_model', $row) ? $row['recommended_sdxl_base_model'] : null,
+                    ':positive_prompt' => (string)($row['positive_prompt'] ?? ''),
+                    ':negative_prompt' => (string)($row['negative_prompt'] ?? ''),
+                    ':positive_parts' => json_encode(is_array($row['positive_parts'] ?? null) ? $row['positive_parts'] : []),
+                    ':negative_parts' => json_encode(is_array($row['negative_parts'] ?? null) ? $row['negative_parts'] : []),
+                    ':required_loras' => json_encode(is_array($row['required_loras'] ?? null) ? $row['required_loras'] : []),
+                    ':created_at' => (string)($row['created_at'] ?? $now),
+                    ':updated_at' => (string)($row['updated_at'] ?? $now),
+                ]);
+                $counts['characters']++;
+            }
+
+            foreach (['category', 'phrase', 'promptpreset', 'composerpack', 'characterpreset'] as $table) {
+                $resetSeq($table);
+            }
+
+            $pdo->commit();
+            respond(200, ['ok' => true, 'imported' => $counts]);
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
+    }
+
     if ($method === 'GET' && $path === '/categories') {
         $rows = $pdo->query('SELECT * FROM category ORDER BY sort_order, id')->fetchAll();
         respond(200, $rows);
