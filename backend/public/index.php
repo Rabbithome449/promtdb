@@ -109,6 +109,19 @@ function initSchema(PDO $pdo): void {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )");
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS externalreference (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        source_url TEXT NOT NULL,
+        image_path TEXT NULL,
+        positive_prompt TEXT NOT NULL DEFAULT '',
+        negative_prompt TEXT NOT NULL DEFAULT '',
+        positive_parts JSONB NOT NULL DEFAULT '[]'::jsonb,
+        negative_parts JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )");
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS characterpreset (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -149,6 +162,51 @@ function normalizeName(string $value): string {
 function inferVersionFamily(string $name): string {
     $clean = strtolower(str_replace(' ', '_', trim($name)));
     return preg_replace('/_v\d+$/', '', $clean) ?: $clean;
+}
+
+function splitPromptToParts(string $prompt): array {
+    $chunks = array_map('trim', explode(',', $prompt));
+    $parts = [];
+    foreach ($chunks as $chunk) {
+        if ($chunk === '') continue;
+        $parts[] = ['text' => $chunk, 'weight' => 1];
+    }
+    return $parts;
+}
+
+function httpGetJson(string $url): array {
+    $body = '';
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: promtdb/1.0'],
+        ]);
+        $res = curl_exec($ch);
+        if ($res === false) {
+            $err = curl_error($ch);
+            curl_close($ch);
+            throw new RuntimeException('Failed to fetch URL: ' . $err);
+        }
+        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($status < 200 || $status >= 300) {
+            throw new RuntimeException('Fetch failed with status ' . $status);
+        }
+        $body = (string)$res;
+    } else {
+        $ctx = stream_context_create(['http' => ['timeout' => 15, 'header' => "Accept: application/json\r\nUser-Agent: promtdb/1.0\r\n"]]);
+        $res = @file_get_contents($url, false, $ctx);
+        if ($res === false) {
+            throw new RuntimeException('Failed to fetch URL');
+        }
+        $body = (string)$res;
+    }
+    $decoded = json_decode($body, true);
+    if (!is_array($decoded)) throw new RuntimeException('Invalid JSON response');
+    return $decoded;
 }
 
 $defaultAdminUser = getenv('PROMPTDB_DEFAULT_ADMIN_USER') ?: 'promptdb';
@@ -491,6 +549,121 @@ try {
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             throw $e;
+        }
+    }
+
+    if ($method === 'POST' && $path === '/external-references/parse') {
+        $sourceUrl = trim((string)($payload['source_url'] ?? ''));
+        if ($sourceUrl === '') errorResponse(400, 'SOURCE_URL_REQUIRED', 'source_url is required');
+
+        $positivePrompt = '';
+        $negativePrompt = '';
+        $imagePath = null;
+
+        if (preg_match('#^https?://civitai\.com/images/(\d+)#i', $sourceUrl, $m)) {
+            $imageId = (int)$m[1];
+            $apiUrl = 'https://civitai.com/api/v1/images?imageId=' . $imageId;
+            $json = httpGetJson($apiUrl);
+            $item = (is_array($json['items'] ?? null) && isset($json['items'][0]) && is_array($json['items'][0])) ? $json['items'][0] : null;
+            if (!$item) errorResponse(422, 'PARSE_FAILED', 'No image metadata found');
+
+            $meta = (is_array($item['meta']['meta'] ?? null) ? $item['meta']['meta'] : []);
+            $positivePrompt = trim((string)($meta['prompt'] ?? ''));
+            $negativePrompt = trim((string)($meta['negativePrompt'] ?? ''));
+            $imagePath = isset($item['url']) ? (string)$item['url'] : null;
+        } else {
+            errorResponse(422, 'UNSUPPORTED_SOURCE', 'Currently only Civitai image URLs are supported');
+        }
+
+        respond(200, [
+            'source_url' => $sourceUrl,
+            'image_path' => $imagePath,
+            'positive_prompt' => $positivePrompt,
+            'negative_prompt' => $negativePrompt,
+            'positive_parts' => splitPromptToParts($positivePrompt),
+            'negative_parts' => splitPromptToParts($negativePrompt),
+        ]);
+    }
+
+    $jsonExternalRefs = function() use ($pdo): array {
+        $rows = $pdo->query('SELECT * FROM externalreference ORDER BY id DESC')->fetchAll();
+        foreach ($rows as &$row) {
+            $row['positive_parts'] = json_decode((string)$row['positive_parts'], true) ?: [];
+            $row['negative_parts'] = json_decode((string)$row['negative_parts'], true) ?: [];
+        }
+        return $rows;
+    };
+
+    if ($method === 'GET' && $path === '/external-references') {
+        respond(200, $jsonExternalRefs());
+    }
+
+    if ($method === 'POST' && $path === '/external-references') {
+        $name = trim((string)($payload['name'] ?? ''));
+        $sourceUrl = trim((string)($payload['source_url'] ?? ''));
+        if ($name === '') errorResponse(400, 'NAME_REQUIRED', 'name is required');
+        if ($sourceUrl === '') errorResponse(400, 'SOURCE_URL_REQUIRED', 'source_url is required');
+
+        $positivePrompt = trim((string)($payload['positive_prompt'] ?? ''));
+        $negativePrompt = trim((string)($payload['negative_prompt'] ?? ''));
+        $positiveParts = is_array($payload['positive_parts'] ?? null) ? $payload['positive_parts'] : splitPromptToParts($positivePrompt);
+        $negativeParts = is_array($payload['negative_parts'] ?? null) ? $payload['negative_parts'] : splitPromptToParts($negativePrompt);
+
+        $stmt = $pdo->prepare('INSERT INTO externalreference(name,source_url,image_path,positive_prompt,negative_prompt,positive_parts,negative_parts,created_at,updated_at) VALUES (:name,:source_url,:image_path,:positive_prompt,:negative_prompt,:positive_parts,:negative_parts,:now,:now) RETURNING *');
+        $stmt->execute([
+            ':name' => $name,
+            ':source_url' => $sourceUrl,
+            ':image_path' => array_key_exists('image_path', $payload) ? ($payload['image_path'] ?: null) : null,
+            ':positive_prompt' => $positivePrompt,
+            ':negative_prompt' => $negativePrompt,
+            ':positive_parts' => json_encode($positiveParts),
+            ':negative_parts' => json_encode($negativeParts),
+            ':now' => nowUtc(),
+        ]);
+        $row = $stmt->fetch();
+        $row['positive_parts'] = json_decode((string)$row['positive_parts'], true) ?: [];
+        $row['negative_parts'] = json_decode((string)$row['negative_parts'], true) ?: [];
+        respond(200, $row);
+    }
+
+    if (preg_match('#^/external-references/(\d+)$#', $path, $m)) {
+        $id = (int)$m[1];
+        if ($method === 'DELETE') {
+            $stmt = $pdo->prepare('DELETE FROM externalreference WHERE id=:id');
+            $stmt->execute([':id' => $id]);
+            if ($stmt->rowCount() === 0) errorResponse(404, 'EXTERNAL_REFERENCE_NOT_FOUND', 'External reference not found');
+            respond(200, ['ok' => true]);
+        }
+        if ($method === 'PATCH') {
+            $get = $pdo->prepare('SELECT * FROM externalreference WHERE id=:id');
+            $get->execute([':id' => $id]);
+            $curr = $get->fetch();
+            if (!$curr) errorResponse(404, 'EXTERNAL_REFERENCE_NOT_FOUND', 'External reference not found');
+
+            $name = array_key_exists('name', $payload) ? trim((string)$payload['name']) : (string)$curr['name'];
+            $sourceUrl = array_key_exists('source_url', $payload) ? trim((string)$payload['source_url']) : (string)$curr['source_url'];
+            $imagePath = array_key_exists('image_path', $payload) ? ($payload['image_path'] ?: null) : $curr['image_path'];
+            $positivePrompt = array_key_exists('positive_prompt', $payload) ? trim((string)$payload['positive_prompt']) : (string)$curr['positive_prompt'];
+            $negativePrompt = array_key_exists('negative_prompt', $payload) ? trim((string)$payload['negative_prompt']) : (string)$curr['negative_prompt'];
+            $positiveParts = array_key_exists('positive_parts', $payload) ? (is_array($payload['positive_parts']) ? $payload['positive_parts'] : []) : (json_decode((string)$curr['positive_parts'], true) ?: []);
+            $negativeParts = array_key_exists('negative_parts', $payload) ? (is_array($payload['negative_parts']) ? $payload['negative_parts'] : []) : (json_decode((string)$curr['negative_parts'], true) ?: []);
+
+            $stmt = $pdo->prepare('UPDATE externalreference SET name=:name,source_url=:source_url,image_path=:image_path,positive_prompt=:positive_prompt,negative_prompt=:negative_prompt,positive_parts=:positive_parts,negative_parts=:negative_parts,updated_at=:now WHERE id=:id RETURNING *');
+            $stmt->execute([
+                ':name' => $name,
+                ':source_url' => $sourceUrl,
+                ':image_path' => $imagePath,
+                ':positive_prompt' => $positivePrompt,
+                ':negative_prompt' => $negativePrompt,
+                ':positive_parts' => json_encode($positiveParts),
+                ':negative_parts' => json_encode($negativeParts),
+                ':now' => nowUtc(),
+                ':id' => $id,
+            ]);
+            $row = $stmt->fetch();
+            $row['positive_parts'] = json_decode((string)$row['positive_parts'], true) ?: [];
+            $row['negative_parts'] = json_decode((string)$row['negative_parts'], true) ?: [];
+            respond(200, $row);
         }
     }
 

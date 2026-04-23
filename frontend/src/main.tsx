@@ -44,6 +44,17 @@ type Pack = {
   negative_parts: PromptPart[]
 }
 
+type ExternalReference = {
+  id: number
+  name: string
+  source_url: string
+  image_path: string | null
+  positive_prompt: string
+  negative_prompt: string
+  positive_parts: PromptPart[]
+  negative_parts: PromptPart[]
+}
+
 type CharacterPreset = {
   id: number
   name: string
@@ -207,6 +218,7 @@ function App() {
   const [phrases, setPhrases] = useState<Phrase[]>([])
   const [presets, setPresets] = useState<Preset[]>([])
   const [packs, setPacks] = useState<Pack[]>([])
+  const [externalReferences, setExternalReferences] = useState<ExternalReference[]>([])
   const [characters, setCharacters] = useState<CharacterPreset[]>([])
 
   const [librarySelectedCategoryId, setLibrarySelectedCategoryId] = useState<number | null>(null)
@@ -406,6 +418,14 @@ function App() {
 
   const [presetName, setPresetName] = useState('')
   const [selectedPackId, setSelectedPackId] = useState<number | null>(null)
+  const [selectedExternalReferenceId, setSelectedExternalReferenceId] = useState<number | null>(null)
+  const [externalReferenceName, setExternalReferenceName] = useState('')
+  const [externalReferenceSourceUrl, setExternalReferenceSourceUrl] = useState('')
+  const [externalReferenceImagePath, setExternalReferenceImagePath] = useState('')
+  const [externalReferencePositivePrompt, setExternalReferencePositivePrompt] = useState('')
+  const [externalReferenceNegativePrompt, setExternalReferenceNegativePrompt] = useState('')
+  const [externalReferenceStatus, setExternalReferenceStatus] = useState('')
+  const [externalReferenceParsing, setExternalReferenceParsing] = useState(false)
   const [activePackIds, setActivePackIds] = useState<number[]>([])
   const [isPackNameModalOpen, setIsPackNameModalOpen] = useState(false)
   const [pendingPackName, setPendingPackName] = useState('')
@@ -657,11 +677,12 @@ function App() {
     setLoading(true)
     setError(null)
     try {
-      const [c, p, pr, pa, ch, me] = await Promise.all([
+      const [c, p, pr, pa, er, ch, me] = await Promise.all([
         api<Category[]>('/categories'),
         api<Phrase[]>('/phrases'),
         api<Preset[]>('/presets'),
         api<Pack[]>('/packs'),
+        api<ExternalReference[]>('/external-references'),
         api<CharacterPreset[]>('/characters'),
         api<{ user: string, role?: 'admin' | 'user' }>('/auth/me'),
       ])
@@ -669,6 +690,7 @@ function App() {
       setPhrases(p)
       setPresets(pr)
       setPacks(pa)
+      setExternalReferences(er)
       setCharacters(ch)
       setCurrentUsername(me.user)
       setCurrentRole(me.role ?? 'user')
@@ -1201,6 +1223,68 @@ function App() {
     await api(`/packs/${id}`, { method: 'DELETE' })
     if (selectedPackId === id) setSelectedPackId(null)
     setActivePackIds((curr) => curr.filter((packId) => packId !== id))
+    await loadAll()
+  }
+
+  async function parseExternalReferenceUrl() {
+    const source = externalReferenceSourceUrl.trim()
+    if (!source) return
+    setExternalReferenceParsing(true)
+    setExternalReferenceStatus('')
+    try {
+      const parsed = await api<{
+        source_url: string
+        image_path: string | null
+        positive_prompt: string
+        negative_prompt: string
+      }>('/external-references/parse', {
+        method: 'POST',
+        body: JSON.stringify({ source_url: source }),
+      })
+      setExternalReferenceSourceUrl(parsed.source_url)
+      setExternalReferenceImagePath(parsed.image_path ?? '')
+      setExternalReferencePositivePrompt(parsed.positive_prompt)
+      setExternalReferenceNegativePrompt(parsed.negative_prompt)
+      setExternalReferenceStatus('URL parsed successfully')
+    } catch (err) {
+      setExternalReferenceStatus(err instanceof Error ? err.message : 'Parse failed')
+    } finally {
+      setExternalReferenceParsing(false)
+    }
+  }
+
+  async function saveExternalReference() {
+    if (!externalReferenceName.trim() || !externalReferenceSourceUrl.trim()) return
+    await api<ExternalReference>('/external-references', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: externalReferenceName.trim(),
+        source_url: externalReferenceSourceUrl.trim(),
+        image_path: externalReferenceImagePath.trim() || null,
+        positive_prompt: externalReferencePositivePrompt,
+        negative_prompt: externalReferenceNegativePrompt,
+      }),
+    })
+    setExternalReferenceName('')
+    setExternalReferenceSourceUrl('')
+    setExternalReferenceImagePath('')
+    setExternalReferencePositivePrompt('')
+    setExternalReferenceNegativePrompt('')
+    setExternalReferenceStatus('Saved')
+    await loadAll()
+  }
+
+  function addExternalReferenceById(referenceId: number) {
+    const ref = externalReferences.find((r) => r.id === referenceId)
+    if (!ref) return
+    setPositiveParts((curr) => mergePartsReplace(curr, ref.positive_parts.map((part, idx) => partToComposerItem(part, `xref-pos-${ref.id}`, idx))))
+    setNegativeParts((curr) => mergePartsReplace(curr, ref.negative_parts.map((part, idx) => partToComposerItem(part, `xref-neg-${ref.id}`, idx))))
+  }
+
+  async function deleteExternalReference(id: number) {
+    if (!window.confirm('Delete external reference?')) return
+    await api(`/external-references/${id}`, { method: 'DELETE' })
+    if (selectedExternalReferenceId === id) setSelectedExternalReferenceId(null)
     await loadAll()
   }
 
@@ -1875,6 +1959,91 @@ function App() {
                     </div>
                   ))}
                   {filteredPacks.length === 0 && <span style={{ color: ui.muted }}>No packs yet.</span>}
+                </div>
+              </div>
+            </Panel>
+
+            <Panel title="External Image References">
+              <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <input
+                    style={inputStyle}
+                    value={externalReferenceName}
+                    onChange={(e) => setExternalReferenceName(e.target.value)}
+                    placeholder="Reference name"
+                  />
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <input
+                      style={{ ...inputStyle, flex: 1 }}
+                      value={externalReferenceSourceUrl}
+                      onChange={(e) => setExternalReferenceSourceUrl(e.target.value)}
+                      placeholder="Source URL (e.g. https://civitai.com/images/...)"
+                    />
+                    <button style={btnStyle} type="button" disabled={externalReferenceParsing || !externalReferenceSourceUrl.trim()} onClick={() => void parseExternalReferenceUrl()}>
+                      {externalReferenceParsing ? 'Loading...' : 'Einlesen/Laden'}
+                    </button>
+                  </div>
+                  <input
+                    style={inputStyle}
+                    value={externalReferenceImagePath}
+                    onChange={(e) => setExternalReferenceImagePath(e.target.value)}
+                    placeholder="Image path/URL (optional)"
+                  />
+                  <textarea
+                    style={textareaStyle}
+                    rows={3}
+                    value={externalReferencePositivePrompt}
+                    onChange={(e) => setExternalReferencePositivePrompt(e.target.value)}
+                    placeholder="Positive prompt"
+                  />
+                  <textarea
+                    style={textareaStyle}
+                    rows={3}
+                    value={externalReferenceNegativePrompt}
+                    onChange={(e) => setExternalReferenceNegativePrompt(e.target.value)}
+                    placeholder="Negative prompt"
+                  />
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button style={btnStyle} type="button" disabled={!externalReferenceName.trim() || !externalReferenceSourceUrl.trim()} onClick={() => void saveExternalReference()}>
+                      Save external reference
+                    </button>
+                    {externalReferenceStatus && <span style={{ color: ui.muted }}>{externalReferenceStatus}</span>}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <select
+                    style={inputStyle}
+                    value={selectedExternalReferenceId ?? ''}
+                    onChange={(e) => setSelectedExternalReferenceId(e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">Select external reference</option>
+                    {externalReferences.map((ref) => (
+                      <option key={ref.id} value={ref.id}>{ref.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    style={btnStyle}
+                    type="button"
+                    disabled={selectedExternalReferenceId === null}
+                    onClick={() => {
+                      if (selectedExternalReferenceId !== null) {
+                        addExternalReferenceById(selectedExternalReferenceId)
+                        setSelectedExternalReferenceId(null)
+                      }
+                    }}
+                  >
+                    Add reference
+                  </button>
+                  {selectedExternalReferenceId !== null && (
+                    <button
+                      style={{ ...btnGhostStyle, borderColor: ui.danger, color: ui.danger }}
+                      type="button"
+                      onClick={() => void deleteExternalReference(selectedExternalReferenceId)}
+                    >
+                      Delete reference
+                    </button>
+                  )}
                 </div>
               </div>
             </Panel>
