@@ -1089,6 +1089,18 @@ function App() {
     await navigator.clipboard.writeText(text)
   }
 
+  async function exportAllData() {
+    const payload = await api<unknown>('/export/all')
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    a.href = url
+    a.download = `promtdb-export-${stamp}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function partToComposerItem(part: PromptPart, prefix: string, idx: number): ComposerItem {
     return {
       id: `${prefix}-${idx}-${Date.now()}-${Math.random()}`,

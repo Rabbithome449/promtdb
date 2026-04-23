@@ -391,6 +391,29 @@ def list_characters(session: Session = Depends(get_session)):
     return session.exec(select(CharacterPreset).order_by(CharacterPreset.id.desc())).all()
 
 
+@app.get("/export/all")
+def export_all(session: Session = Depends(get_session)):
+    categories = session.exec(select(Category).order_by(Category.sort_order, Category.id)).all()
+    phrases = session.exec(select(Phrase).order_by(Phrase.sort_order, Phrase.id)).all()
+    presets = session.exec(select(PromptPreset).order_by(PromptPreset.id.desc())).all()
+    packs = session.exec(select(ComposerPack).order_by(ComposerPack.id.desc())).all()
+    characters = session.exec(select(CharacterPreset).order_by(CharacterPreset.id.desc())).all()
+
+    return {
+        "meta": {
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "service": "promtdb-backend",
+            "version": app.version,
+            "models": ["categories", "phrases", "presets", "packs", "characters"],
+        },
+        "categories": [c.model_dump() for c in categories],
+        "phrases": [p.model_dump() for p in phrases],
+        "presets": [p.model_dump() for p in presets],
+        "packs": [p.model_dump() for p in packs],
+        "characters": [c.model_dump() for c in characters],
+    }
+
+
 @app.post("/characters", response_model=CharacterPreset)
 def create_character(payload: CharacterPresetCreate, session: Session = Depends(get_session)):
     family = (payload.version_family or "").strip() or infer_version_family(payload.name)
