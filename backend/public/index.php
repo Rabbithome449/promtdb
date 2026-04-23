@@ -386,7 +386,7 @@ try {
                 $counts['categories']++;
             }
 
-            $insertPhrase = $pdo->prepare('INSERT INTO phrase(id,category_id,text,default_weight,is_negative_default,notes,required_lora,sort_order,created_at,updated_at) VALUES (:id,:category_id,:text,:default_weight,:is_negative_default,:notes,:required_lora,:sort,:created_at,:updated_at)');
+            $insertPhrase = $pdo->prepare('INSERT INTO phrase(id,category_id,text,default_weight,is_negative_default,notes,required_lora,sort_order,created_at,updated_at) VALUES (:id,:category_id,:text,:default_weight,CAST(:is_negative_default AS BOOLEAN),:notes,:required_lora,:sort,:created_at,:updated_at)');
             foreach ($phrases as $row) {
                 if (!is_array($row)) continue;
                 $id = max(1, (int)($row['id'] ?? 0));
@@ -413,7 +413,7 @@ try {
                     ':category_id' => $categoryId,
                     ':text' => $text,
                     ':default_weight' => $defaultWeight,
-                    ':is_negative_default' => $isNegativeDefault,
+                    ':is_negative_default' => $isNegativeDefault ? 'true' : 'false',
                     ':notes' => array_key_exists('notes', $row) ? $row['notes'] : null,
                     ':required_lora' => array_key_exists('required_lora', $row) ? $row['required_lora'] : null,
                     ':sort' => (int)($row['sort_order'] ?? 0),
