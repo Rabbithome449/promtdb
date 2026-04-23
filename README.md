@@ -3,7 +3,7 @@
 Pragmatic MVP for managing Stable Diffusion prompt tags/phrases and composing positive/negative prompts.
 
 ## Stack
-- Backend: FastAPI + SQLModel
+- Backend: PHP (same webserver, route `/qpi`)
 - Frontend: React + TypeScript + Vite
 - Database: PostgreSQL
 - Local test deployment: Docker Compose
@@ -21,8 +21,8 @@ Portainer (ohne Schnickschnack):
 
 Services:
 - Web UI: `http://localhost:17813`
-- API: `http://localhost:18000`
-- API health: `http://localhost:18000/health`
+- API (same host): `http://localhost:17813/qpi`
+- API health: `http://localhost:17813/qpi/health`
 - Postgres: `localhost:5432` (db/user/pass: `promtdb`)
 
 Default login:
@@ -44,16 +44,14 @@ docker compose down -v
 ### Backend
 ```bash
 cd backend
-pip3 install -r requirements.txt
-export DATABASE_URL="postgresql+psycopg://promtdb:promtdb@localhost:5432/promtdb"
-uvicorn app.main:app --reload --port 8000
+php -S 0.0.0.0:8000 -t public
 ```
 
 ### Frontend
 ```bash
 cd frontend
 npm install
-# default API base is /api for reverse-proxy mode
+# default API base is /qpi for same-host mode
 # set direct API URL for vite dev server:
 VITE_API_URL=http://localhost:8000 npm run dev
 ```
@@ -63,12 +61,12 @@ VITE_API_URL=http://localhost:8000 npm run dev
 ### Backend
 - `DATABASE_URL` (default: `postgresql+psycopg://promtdb:promtdb@localhost:5432/promtdb`)
 - `CORS_ORIGINS` (comma-separated, default: `*`)
-- `PROMPTDB_USER` (default: `promptdb`)
-- `PROMPTDB_PASS` (default: `promptdb`)
+- `PROMPTDB_DEFAULT_ADMIN_USER` (default: `promptdb`)
+- `PROMPTDB_DEFAULT_ADMIN_PASS` (default: `promptdb`)
 - `PROMPTDB_TOKEN_TTL_HOURS` (default: `24`)
 
 ### Frontend
-- `VITE_API_URL` (default: `/api`)
+- `VITE_API_URL` (default: `/qpi`)
 
 ## API overview
 - `POST /auth/login`

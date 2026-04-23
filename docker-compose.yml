@@ -9,8 +9,10 @@ services:
     volumes:
       - promtdb_pgdata:/var/lib/postgresql/data
 
-  api:
-    build: ./backend
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.unified
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://promtdb:promtdb@db:5432/promtdb
@@ -19,14 +21,6 @@ services:
       PROMPTDB_DEFAULT_ADMIN_PASS: promptdb
     depends_on:
       - db
-    ports:
-      - "18000:8000"
-
-  web:
-    build: ./frontend
-    restart: unless-stopped
-    depends_on:
-      - api
     ports:
       - "17813:80"
 
