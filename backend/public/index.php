@@ -401,6 +401,43 @@ try {
         respond(200, $out);
     }
 
+    if ($method === 'GET' && $path === '/export/all') {
+        requireAdmin($currentUser);
+
+        $categories = $pdo->query('SELECT * FROM category ORDER BY sort_order, id')->fetchAll();
+        $phrases = $pdo->query('SELECT * FROM phrase ORDER BY sort_order, id')->fetchAll();
+        $presets = $pdo->query('SELECT * FROM promptpreset ORDER BY id DESC')->fetchAll();
+        $packs = $pdo->query('SELECT * FROM composerpack ORDER BY id DESC')->fetchAll();
+        $characters = $pdo->query('SELECT * FROM characterpreset ORDER BY id DESC')->fetchAll();
+
+        foreach ($presets as &$row) {
+            $row['positive_parts'] = json_decode((string)$row['positive_parts'], true) ?: [];
+            $row['negative_parts'] = json_decode((string)$row['negative_parts'], true) ?: [];
+        }
+        foreach ($packs as &$row) {
+            $row['positive_parts'] = json_decode((string)$row['positive_parts'], true) ?: [];
+            $row['negative_parts'] = json_decode((string)$row['negative_parts'], true) ?: [];
+        }
+        foreach ($characters as &$row) {
+            foreach (['positive_parts', 'negative_parts', 'required_loras'] as $key) {
+                $row[$key] = json_decode((string)$row[$key], true) ?: [];
+            }
+        }
+
+        respond(200, [
+            'meta' => [
+                'exported_at' => nowUtc(),
+                'service' => 'promtdb-backend-php',
+                'models' => ['categories', 'phrases', 'presets', 'packs', 'characters'],
+            ],
+            'categories' => $categories,
+            'phrases' => $phrases,
+            'presets' => $presets,
+            'packs' => $packs,
+            'characters' => $characters,
+        ]);
+    }
+
     if ($method === 'POST' && $path === '/import/all') {
         requireAdmin($currentUser);
         $data = isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : $payload;
