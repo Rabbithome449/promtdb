@@ -77,6 +77,17 @@ type AppUser = {
   updated_at?: string
 }
 
+type AdminImportResult = {
+  ok: boolean
+  imported: {
+    categories: number
+    phrases: number
+    presets: number
+    packs: number
+    characters: number
+  }
+}
+
 const API_BASE = import.meta.env.VITE_API_URL ?? '/qpi'
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -431,6 +442,10 @@ function App() {
   const [newAdminUsername, setNewAdminUsername] = useState('')
   const [newAdminPassword, setNewAdminPassword] = useState('')
   const [newAdminRole, setNewAdminRole] = useState<'admin' | 'user'>('user')
+  const [adminImportPayload, setAdminImportPayload] = useState<unknown | null>(null)
+  const [adminImportFileName, setAdminImportFileName] = useState('')
+  const [adminImportStatus, setAdminImportStatus] = useState('')
+  const [adminImportBusy, setAdminImportBusy] = useState(false)
   const isMobile = viewportWidth < 900
   const isNarrow = viewportWidth < 640
   const scrollAreaStyle: React.CSSProperties = {
@@ -1352,6 +1367,41 @@ function App() {
     await refreshAdminData()
   }
 
+  async function readAdminImportFile(file: File) {
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+      setAdminImportPayload(parsed)
+      setAdminImportFileName(file.name)
+      setAdminImportStatus('')
+    } catch {
+      setAdminImportPayload(null)
+      setAdminImportFileName('')
+      setAdminImportStatus('Invalid JSON file')
+    }
+  }
+
+  async function runAdminImport() {
+    if (currentRole !== 'admin') return
+    if (!adminImportPayload) return
+    if (!window.confirm('Import replaces all existing categories, phrases, presets, packs and characters. Continue?')) return
+    setAdminImportBusy(true)
+    setAdminImportStatus('')
+    try {
+      const result = await api<AdminImportResult>('/import/all', {
+        method: 'POST',
+        body: JSON.stringify(adminImportPayload),
+      })
+      setAdminImportStatus(`Imported: ${result.imported.categories} categories, ${result.imported.phrases} phrases, ${result.imported.presets} presets, ${result.imported.packs} packs, ${result.imported.characters} characters`)
+      await loadAll()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Import failed'
+      setAdminImportStatus(msg)
+    } finally {
+      setAdminImportBusy(false)
+    }
+  }
+
   return (
     <main style={{ background: `radial-gradient(circle at top, ${ui.bg2}, ${ui.bg})`, minHeight: '100vh', color: ui.text, fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div style={{ maxWidth: 1320, margin: '0 auto', padding: 24 }}>
@@ -1967,6 +2017,30 @@ function App() {
                       ))}
                       {adminUsers.length === 0 && <span style={{ color: ui.muted }}>No users</span>}
                     </div>
+                  </section>
+
+                  <section style={{ borderTop: `1px solid ${ui.border}`, paddingTop: 10 }}>
+                    <h4 style={{ margin: '0 0 8px' }}>Data import (migration)</h4>
+                    <p style={{ margin: '0 0 8px', color: ui.muted }}>
+                      Import the JSON created by export. This will replace all existing categories, phrases, presets, packs and characters.
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <input
+                        style={inputStyle}
+                        type="file"
+                        accept="application/json,.json"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          void readAdminImportFile(file)
+                        }}
+                      />
+                      <button style={btnStyle} onClick={() => void runAdminImport()} disabled={!adminImportPayload || adminImportBusy}>
+                        {adminImportBusy ? 'Importing...' : 'Import JSON'}
+                      </button>
+                    </div>
+                    {adminImportFileName && <div style={{ marginTop: 8, color: ui.muted }}>Selected: {adminImportFileName}</div>}
+                    {adminImportStatus && <div style={{ marginTop: 8, color: ui.text }}>{adminImportStatus}</div>}
                   </section>
                 </>
               )}
