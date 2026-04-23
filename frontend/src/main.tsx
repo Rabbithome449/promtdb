@@ -1388,13 +1388,18 @@ function App() {
         </section>
 
         {activeTab === 'dashboard' && (
-          <section style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit,minmax(${isNarrow ? 170 : 220}px,1fr))`, gap: 12 }}>
-            <StatCard title={t.categoriesCount} value={String(categories.length)} />
-            <StatCard title={t.phrasesCount} value={String(phrases.length)} />
-            <StatCard title={t.presetsCount} value={String(presets.length)} />
-            <StatCard title={t.charactersCount} value={String(characters.length)} />
-            <StatCard title={t.promptQuality} value={`${promptHealth.score}/100`} highlight />
-            <StatCard title={t.requiredLoras} value={requiredLoras.length ? requiredLoras.join(', ') : t.none} />
+          <section style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit,minmax(${isNarrow ? 170 : 220}px,1fr))`, gap: 12 }}>
+              <StatCard title={t.categoriesCount} value={String(categories.length)} />
+              <StatCard title={t.phrasesCount} value={String(phrases.length)} />
+              <StatCard title={t.presetsCount} value={String(presets.length)} />
+              <StatCard title={t.charactersCount} value={String(characters.length)} />
+              <StatCard title={t.promptQuality} value={`${promptHealth.score}/100`} highlight />
+              <StatCard title={t.requiredLoras} value={requiredLoras.length ? requiredLoras.join(', ') : t.none} />
+            </div>
+            <div>
+              <button style={btnStyle} onClick={() => void exportAllData()}>Export all data (JSON)</button>
+            </div>
           </section>
         )}
 
