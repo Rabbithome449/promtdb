@@ -393,12 +393,27 @@ try {
                 $categoryId = max(1, (int)($row['category_id'] ?? 0));
                 $text = trim((string)($row['text'] ?? ''));
                 if ($text === '') continue;
+                $defaultWeightRaw = array_key_exists('default_weight', $row) ? $row['default_weight'] : null;
+                if ($defaultWeightRaw === '' || $defaultWeightRaw === null) {
+                    $defaultWeight = null;
+                } elseif (is_numeric($defaultWeightRaw)) {
+                    $defaultWeight = (float)$defaultWeightRaw;
+                } else {
+                    $defaultWeight = null;
+                }
+                $isNegativeDefaultRaw = $row['is_negative_default'] ?? false;
+                if (is_string($isNegativeDefaultRaw)) {
+                    $v = strtolower(trim($isNegativeDefaultRaw));
+                    $isNegativeDefault = in_array($v, ['1', 'true', 'yes', 'on'], true);
+                } else {
+                    $isNegativeDefault = (bool)$isNegativeDefaultRaw;
+                }
                 $insertPhrase->execute([
                     ':id' => $id,
                     ':category_id' => $categoryId,
                     ':text' => $text,
-                    ':default_weight' => array_key_exists('default_weight', $row) ? $row['default_weight'] : null,
-                    ':is_negative_default' => (bool)($row['is_negative_default'] ?? false),
+                    ':default_weight' => $defaultWeight,
+                    ':is_negative_default' => $isNegativeDefault,
                     ':notes' => array_key_exists('notes', $row) ? $row['notes'] : null,
                     ':required_lora' => array_key_exists('required_lora', $row) ? $row['required_lora'] : null,
                     ':sort' => (int)($row['sort_order'] ?? 0),
