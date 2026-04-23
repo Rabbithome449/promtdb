@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "version:generate": "node scripts/write-version.mjs",
+    "dev": "npm run version:generate && vite",
+    "build": "npm run version:generate && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

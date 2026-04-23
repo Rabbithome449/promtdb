@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { APP_VERSION } from './generated/version'
 
 type TabKey = 'dashboard' | 'library' | 'composer' | 'characters' | 'profile'
 
@@ -2078,6 +2079,9 @@ function App() {
           </>
         )}
       </div>
+      <footer style={{ maxWidth: 1320, margin: '0 auto', padding: '0 24px 16px', color: ui.muted, fontSize: 12 }}>
+        Version: {APP_VERSION}
+      </footer>
     </main>
   )
 }
