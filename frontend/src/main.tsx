@@ -77,7 +77,7 @@ type AppUser = {
   updated_at?: string
 }
 
-const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
+const API_BASE = import.meta.env.VITE_API_URL ?? '/qpi'
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const token = localStorage.getItem('promptdb_token')

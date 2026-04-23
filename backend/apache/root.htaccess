@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Keep API requests under /qpi untouched
+RewriteRule ^qpi/ - [L]
+
+# Frontend SPA fallback
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]

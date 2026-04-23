@@ -15,3 +15,7 @@ Environment variables:
 
 ## Test
 - `GET http://localhost:8000/health`
+
+## Unified deploy mode
+- In docker-compose unified mode, this backend is exposed under `/qpi` on the same host as frontend.
+- Example: `http://localhost:17813/qpi/health`
