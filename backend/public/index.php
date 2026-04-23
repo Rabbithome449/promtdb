@@ -195,6 +195,11 @@ function issueToken(string $file, int $ttlHours, array $user): string {
 function requireAuth(string $file): ?array {
     $public = ['/health', '/auth/login'];
     $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+    if (str_starts_with($path, '/qpi/')) {
+        $path = substr($path, 4);
+    } elseif ($path === '/qpi') {
+        $path = '/';
+    }
     if (in_array($path, $public, true)) return null;
 
     $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
@@ -230,6 +235,11 @@ $currentUser = requireAuth($tokenFile);
 $pdo = pdo();
 ensureDefaultAdmin($pdo, $defaultAdminUser, $defaultAdminPass);
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+if (str_starts_with($path, '/qpi/')) {
+    $path = substr($path, 4);
+} elseif ($path === '/qpi') {
+    $path = '/';
+}
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $payload = jsonInput();
 
