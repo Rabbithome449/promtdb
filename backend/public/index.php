@@ -202,7 +202,11 @@ function requireAuth(string $file): ?array {
     }
     if (in_array($path, $public, true)) return null;
 
-    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+    if ($authHeader === '' && function_exists('getallheaders')) {
+        $headers = getallheaders();
+        $authHeader = $headers['Authorization'] ?? ($headers['authorization'] ?? '');
+    }
     if (!preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
         errorResponse(401, 'UNAUTHORIZED', 'Unauthorized');
     }
