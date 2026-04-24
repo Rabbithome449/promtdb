@@ -597,9 +597,15 @@ try {
         $negativePrompt = '';
         $imagePath = null;
 
-        if (preg_match('#^https?://civitai\.com/images/(\d+)#i', $sourceUrl, $m)) {
+        $parts = parse_url($sourceUrl);
+        $host = strtolower((string)($parts['host'] ?? ''));
+        $pathPart = (string)($parts['path'] ?? '');
+        $isCivitaiHost = in_array($host, ['civitai.com', 'www.civitai.com', 'civitai.red', 'www.civitai.red'], true);
+
+        if ($isCivitaiHost && preg_match('#^/images/(\d+)#i', $pathPart, $m)) {
             $imageId = (int)$m[1];
-            $apiUrl = 'https://civitai.com/api/v1/images?imageId=' . $imageId;
+            $apiHost = str_ends_with($host, 'civitai.red') ? 'https://civitai.red' : 'https://civitai.com';
+            $apiUrl = $apiHost . '/api/v1/images?imageId=' . $imageId;
             $json = httpGetJson($apiUrl);
             $item = (is_array($json['items'] ?? null) && isset($json['items'][0]) && is_array($json['items'][0])) ? $json['items'][0] : null;
             if (!$item) errorResponse(422, 'PARSE_FAILED', 'No image metadata found');
@@ -609,7 +615,7 @@ try {
             $negativePrompt = trim((string)($meta['negativePrompt'] ?? ''));
             $imagePath = isset($item['url']) ? (string)$item['url'] : null;
         } else {
-            errorResponse(422, 'UNSUPPORTED_SOURCE', 'Currently only Civitai image URLs are supported');
+            errorResponse(422, 'UNSUPPORTED_SOURCE', 'Currently only Civitai image URLs (civitai.com, civitai.red) are supported');
         }
 
         respond(200, [
