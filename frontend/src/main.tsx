@@ -99,6 +99,13 @@ type AdminImportResult = {
   }
 }
 
+type ImportPreviewItem = {
+  id: string
+  text: string
+  status: 'create' | 'skip-duplicate' | 'ignore'
+  targetCategoryId: number | null
+}
+
 const API_BASE = import.meta.env.VITE_API_URL ?? '/qpi'
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -234,7 +241,7 @@ function App() {
   const [importPromptText, setImportPromptText] = useState('')
   const [importingPrompt, setImportingPrompt] = useState(false)
   const [isImportPreviewOpen, setIsImportPreviewOpen] = useState(false)
-  const [importPreviewItems, setImportPreviewItems] = useState<Array<{ text: string, status: 'create' | 'skip-duplicate' | 'ignore' }>>([])
+  const [importPreviewItems, setImportPreviewItems] = useState<ImportPreviewItem[]>([])
   const [isPhraseModalOpen, setIsPhraseModalOpen] = useState(false)
   const [editingPhraseId, setEditingPhraseId] = useState<number | null>(null)
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null)
@@ -886,20 +893,21 @@ function App() {
     const existing = new Set(phrases.map((p) => normalizeText(p.text)).filter(Boolean))
     const seenNew = new Set<string>()
     const parsed = splitPromptParts(importPromptText).map(parsePromptPhrase)
+    const defaultCategoryId = effectivePhraseCategoryId ?? categories.find((c) => c.name.trim().toLowerCase() === 'imported')?.id ?? null
 
-    const preview: Array<{ text: string, status: 'create' | 'skip-duplicate' | 'ignore' }> = []
-    for (const item of parsed) {
+    const preview: ImportPreviewItem[] = []
+    for (const [idx, item] of parsed.entries()) {
       if (!item || !item.text.trim()) {
-        preview.push({ text: '', status: 'ignore' })
+        preview.push({ id: `preview-${idx}`, text: '', status: 'ignore', targetCategoryId: null })
         continue
       }
       const key = normalizeText(item.text)
       if (!key || existing.has(key) || seenNew.has(key)) {
-        preview.push({ text: item.text, status: 'skip-duplicate' })
+        preview.push({ id: `preview-${idx}`, text: item.text, status: 'skip-duplicate', targetCategoryId: null })
         continue
       }
       seenNew.add(key)
-      preview.push({ text: item.text, status: 'create' })
+      preview.push({ id: `preview-${idx}`, text: item.text, status: 'create', targetCategoryId: defaultCategoryId })
     }
     return preview
   }
@@ -915,44 +923,70 @@ function App() {
     setImportPreviewItems([])
   }
 
+  function removeImportPreviewItem(id: string) {
+    setImportPreviewItems((curr) => curr.filter((item) => item.id !== id))
+  }
+
+  function setImportPreviewItemCategory(id: string, categoryId: number | null) {
+    setImportPreviewItems((curr) => curr.map((item) => {
+      if (item.id !== id) return item
+      return { ...item, targetCategoryId: categoryId }
+    }))
+  }
+
   async function executePromptImport() {
     if (!importPromptText.trim()) return
     setImportingPrompt(true)
     try {
       let importedCategoryId = categories.find((c) => c.name.trim().toLowerCase() === 'imported')?.id ?? null
-      if (importedCategoryId === null) {
-        const created = await api<Category>('/categories', {
-          method: 'POST',
-          body: JSON.stringify({ name: 'imported', sort_order: categories.length }),
-        })
-        importedCategoryId = created.id
-      }
-
-      const importedCategoryPhrasesCount = phrases.filter((p) => p.category_id === importedCategoryId).length
       const existing = new Set(phrases.map((p) => normalizeText(p.text)).filter(Boolean))
       const seenNew = new Set<string>()
-      const parsed = splitPromptParts(importPromptText)
-        .map(parsePromptPhrase)
-        .filter((v): v is { text: string, hasWeight: boolean } => Boolean(v))
+      const parsedMap = new Map(
+        splitPromptParts(importPromptText)
+          .map(parsePromptPhrase)
+          .filter((v): v is { text: string, hasWeight: boolean } => Boolean(v))
+          .map((item) => [normalizeText(item.text), item] as const),
+      )
 
-      let nextSortOrder = importedCategoryPhrasesCount
-      for (const item of parsed) {
+      const itemsToImport = (importPreviewItems.length > 0 ? importPreviewItems : buildImportPreview()).filter((item) => item.status === 'create' && item.text.trim())
+      const nextSortOrderByCategory = new Map<number, number>()
+      for (const p of phrases) {
+        nextSortOrderByCategory.set(p.category_id, (nextSortOrderByCategory.get(p.category_id) ?? 0) + 1)
+      }
+
+      for (const item of itemsToImport) {
         const key = normalizeText(item.text)
         if (!key || existing.has(key) || seenNew.has(key)) continue
+        const parsed = parsedMap.get(key)
+        if (!parsed) continue
+
+        let categoryId = item.targetCategoryId
+        if (categoryId === null) {
+          if (importedCategoryId === null) {
+            const created = await api<Category>('/categories', {
+              method: 'POST',
+              body: JSON.stringify({ name: 'imported', sort_order: categories.length }),
+            })
+            importedCategoryId = created.id
+          }
+          categoryId = importedCategoryId
+        }
+
+        const nextSortOrder = nextSortOrderByCategory.get(categoryId) ?? 0
         seenNew.add(key)
         await api<Phrase>('/phrases', {
           method: 'POST',
           body: JSON.stringify({
-            category_id: importedCategoryId,
-            text: item.text,
-            default_weight: item.hasWeight ? 1 : null,
+            category_id: categoryId,
+            text: parsed.text,
+            default_weight: parsed.hasWeight ? 1 : null,
             is_negative_default: false,
             notes: null,
             required_lora: null,
             sort_order: nextSortOrder,
           }),
         })
-        nextSortOrder += 1
+        nextSortOrderByCategory.set(categoryId, nextSortOrder + 1)
       }
       setImportPromptText('')
       closeImportPreview()
@@ -1733,7 +1767,7 @@ function App() {
                   <button style={btnGhostStyle} type="button" disabled={!importPromptText.trim() || importingPrompt} onClick={openImportPreview}>
                     {language === 'de' ? 'Import-Vorschau' : 'Import preview'}
                   </button>
-                  <button style={btnStyle} type="submit" disabled={!effectivePhraseCategoryId || !importPromptText.trim() || importingPrompt}>
+                  <button style={btnStyle} type="submit" disabled={!importPromptText.trim() || importingPrompt}>
                     {importingPrompt ? (language === 'de' ? 'Import läuft...' : 'Importing...') : (language === 'de' ? 'Prompt importieren' : 'Import prompt')}
                   </button>
                 </div>
@@ -2257,12 +2291,25 @@ function App() {
                 <button style={btnGhostStyle} onClick={closeImportPreview}>✕</button>
               </div>
               <div style={{ maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
-                {importPreviewItems.map((item, idx) => (
-                  <div key={`preview-${idx}`} style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: `1px solid ${ui.border}`, padding: '8px 0' }}>
-                    <span style={{ color: item.status === 'create' ? ui.ok : item.status === 'skip-duplicate' ? ui.warn : ui.muted, minWidth: 140 }}>
+                {importPreviewItems.map((item) => (
+                  <div key={item.id} style={{ display: 'flex', gap: 8, alignItems: 'center', border: `1px solid ${ui.border}`, borderRadius: 999, padding: '8px 10px', marginBottom: 8, background: ui.panel2 }}>
+                    <span style={{ color: item.status === 'create' ? ui.ok : item.status === 'skip-duplicate' ? ui.warn : ui.muted, minWidth: 140, border: `1px solid ${ui.border}`, borderRadius: 999, padding: '2px 8px', textAlign: 'center', fontSize: 12 }}>
                       {item.status === 'create' ? (language === 'de' ? 'Erstellen' : 'Create') : item.status === 'skip-duplicate' ? (language === 'de' ? 'Überspringen (Duplikat)' : 'Skip (duplicate)') : (language === 'de' ? 'Ignorieren' : 'Ignore')}
                     </span>
-                    <span style={{ color: ui.text }}>{item.text || '—'}</span>
+                    <span style={{ color: ui.text, flex: 1 }}>{item.text || '—'}</span>
+                    {item.status === 'create' && (
+                      <select
+                        style={{ ...inputStyle, width: 220 }}
+                        value={item.targetCategoryId ?? ''}
+                        onChange={(e) => setImportPreviewItemCategory(item.id, e.target.value ? Number(e.target.value) : null)}
+                      >
+                        <option value="">{language === 'de' ? 'Imported (auto)' : 'Imported (auto)'}</option>
+                        {categories.map((c) => (
+                          <option key={`import-preview-cat-${item.id}-${c.id}`} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    )}
+                    <button style={{ ...btnGhostStyle, borderRadius: 999, padding: '4px 8px' }} onClick={() => removeImportPreviewItem(item.id)} title={language === 'de' ? 'Aus Liste entfernen' : 'Remove from list'}>✕</button>
                   </div>
                 ))}
                 {importPreviewItems.length === 0 && <p style={{ color: ui.muted }}>{language === 'de' ? 'Keine Einträge in der Vorschau.' : 'No items in preview.'}</p>}
@@ -2273,7 +2320,7 @@ function App() {
                   style={btnStyle}
                   type="button"
                   onClick={() => { void executePromptImport() }}
-                  disabled={!effectivePhraseCategoryId || !importPromptText.trim() || importingPrompt}
+                  disabled={!importPromptText.trim() || importingPrompt}
                 >
                   {language === 'de' ? 'Jetzt importieren' : 'Import now'}
                 </button>
