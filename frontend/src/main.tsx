@@ -1486,6 +1486,26 @@ function App() {
     }
   }
 
+  async function exportAdminData() {
+    if (currentRole !== 'admin') return
+    setAdminImportStatus('')
+    try {
+      const payload = await api<unknown>('/export/all')
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      a.href = url
+      a.download = `promtdb-admin-export-${stamp}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      setAdminImportStatus('Export created')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Export failed'
+      setAdminImportStatus(msg)
+    }
+  }
+
   return (
     <main style={{ background: `radial-gradient(circle at top, ${ui.bg2}, ${ui.bg})`, minHeight: '100vh', color: ui.text, fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div style={{ maxWidth: 1320, margin: '0 auto', padding: 24 }}>
@@ -2185,6 +2205,18 @@ function App() {
                         </div>
                       ))}
                       {adminUsers.length === 0 && <span style={{ color: ui.muted }}>No users</span>}
+                    </div>
+                  </section>
+
+                  <section style={{ borderTop: `1px solid ${ui.border}`, paddingTop: 10 }}>
+                    <h4 style={{ margin: '0 0 8px' }}>Data export (migration)</h4>
+                    <p style={{ margin: '0 0 8px', color: ui.muted }}>
+                      Export all migration-relevant data as JSON.
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button style={btnStyle} onClick={() => void exportAdminData()}>
+                        Export JSON
+                      </button>
                     </div>
                   </section>
 
