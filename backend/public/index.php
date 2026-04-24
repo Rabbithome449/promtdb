@@ -209,6 +209,14 @@ function httpGetJson(string $url): array {
     return $decoded;
 }
 
+function parseBool($value): bool {
+    if (is_bool($value)) return $value;
+    if (is_int($value) || is_float($value)) return ((int)$value) !== 0;
+    $s = strtolower(trim((string)$value));
+    if ($s === '' || in_array($s, ['0', 'false', 'f', 'no', 'off', 'null'], true)) return false;
+    return in_array($s, ['1', 'true', 't', 'yes', 'on'], true);
+}
+
 $defaultAdminUser = getenv('PROMPTDB_DEFAULT_ADMIN_USER') ?: 'promptdb';
 $defaultAdminPass = getenv('PROMPTDB_DEFAULT_ADMIN_PASS') ?: 'promptdb';
 $tokenTtlHours = (int) (getenv('PROMPTDB_TOKEN_TTL_HOURS') ?: '24');
@@ -772,12 +780,12 @@ try {
         if (!$categoryCheck->fetch()) errorResponse(400, 'INVALID_CATEGORY_ID', 'Invalid category_id');
 
         $stmt = $pdo->prepare('INSERT INTO phrase(category_id,text,default_weight,is_negative_default,notes,required_lora,sort_order,created_at,updated_at)
-            VALUES (:category_id,:text,:default_weight,:is_negative_default,:notes,:required_lora,:sort_order,:now,:now) RETURNING *');
+            VALUES (:category_id,:text,:default_weight,CAST(:is_negative_default AS BOOLEAN),:notes,:required_lora,:sort_order,:now,:now) RETURNING *');
         $stmt->execute([
             ':category_id' => $categoryId,
             ':text' => trim((string)($payload['text'] ?? '')),
             ':default_weight' => array_key_exists('default_weight', $payload) ? $payload['default_weight'] : null,
-            ':is_negative_default' => (bool)($payload['is_negative_default'] ?? false),
+            ':is_negative_default' => parseBool($payload['is_negative_default'] ?? false) ? 'true' : 'false',
             ':notes' => $payload['notes'] ?? null,
             ':required_lora' => ($payload['required_lora'] ?? null) ?: null,
             ':sort_order' => (int)($payload['sort_order'] ?? 0),
@@ -797,17 +805,17 @@ try {
             $categoryId = array_key_exists('category_id', $payload) ? (int)$payload['category_id'] : (int)$curr['category_id'];
             $text = array_key_exists('text', $payload) ? trim((string)$payload['text']) : (string)$curr['text'];
             $defaultWeight = array_key_exists('default_weight', $payload) ? $payload['default_weight'] : $curr['default_weight'];
-            $isNegativeDefault = array_key_exists('is_negative_default', $payload) ? (bool)$payload['is_negative_default'] : (bool)$curr['is_negative_default'];
+            $isNegativeDefault = array_key_exists('is_negative_default', $payload) ? parseBool($payload['is_negative_default']) : parseBool($curr['is_negative_default']);
             $notes = array_key_exists('notes', $payload) ? $payload['notes'] : $curr['notes'];
             $requiredLora = array_key_exists('required_lora', $payload) ? ($payload['required_lora'] ?: null) : $curr['required_lora'];
             $sortOrder = array_key_exists('sort_order', $payload) ? (int)$payload['sort_order'] : (int)$curr['sort_order'];
 
-            $stmt = $pdo->prepare('UPDATE phrase SET category_id=:category_id,text=:text,default_weight=:default_weight,is_negative_default=:is_negative_default,notes=:notes,required_lora=:required_lora,sort_order=:sort_order,updated_at=:now WHERE id=:id RETURNING *');
+            $stmt = $pdo->prepare('UPDATE phrase SET category_id=:category_id,text=:text,default_weight=:default_weight,is_negative_default=CAST(:is_negative_default AS BOOLEAN),notes=:notes,required_lora=:required_lora,sort_order=:sort_order,updated_at=:now WHERE id=:id RETURNING *');
             $stmt->execute([
                 ':category_id' => $categoryId,
                 ':text' => $text,
                 ':default_weight' => $defaultWeight,
-                ':is_negative_default' => $isNegativeDefault,
+                ':is_negative_default' => $isNegativeDefault ? 'true' : 'false',
                 ':notes' => $notes,
                 ':required_lora' => $requiredLora,
                 ':sort_order' => $sortOrder,
